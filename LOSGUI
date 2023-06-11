@@ -1,0 +1,2641 @@
+#Add needed Types for creating a Windows Form
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+
+############################################################################################ Setting up the Windows form ############################################################################################
+
+#Set enviroment for script
+$IsHome = "Yes"
+
+# Setup version number
+$version = "Version 1.0"
+
+# Shared variables used for creating CSV files later in the script
+$Encoding = 'UTF8'
+
+If ($IsHome -eq "Yes") {
+    # Directories used in the script for Home enviroment
+    $logFilePath = "C:\Users\Datalund\Desktop\TestMappe\LOStilCSV\"
+    $FolderPath = "C:\Users\Datalund\Desktop\TestMappe\LOStilCSV\"
+    $orgReferenceFilePath = "C:\Users\Datalund\Desktop\Powershell\LOS Master Data\Organisations Enheder\"
+    $orgReferenceFile = Import-Csv -Path (Join-Path $orgReferenceFilePath "dataobjects_1000504.csv") -Delimiter ";" -Encoding UTF7 | Sort-Object NRID -Unique
+    $dynTempDir = 'C:\Users\Datalund\Desktop\TestMappe\Dania\Ressourcer\'
+    $Delimiter = ','
+}
+else {
+    # Directories used in the script for Kolding enviroment
+    $logFilePath = "\\Kolding.dk\koldfs\KOLDING\CF IT og digitalisering\Brugere\Martin Lund Kristensen\Scripts\Powershell\createCSVfromLOS\Logs\"
+    $FolderPath = "\\Kolding.dk\koldfs\KOLDING\CF IT og digitalisering\Brugere\Martin Lund Kristensen\Scripts\Powershell\createCSVfromLOS\"
+    $orgReferenceFilePath = "\\Kolding.dk\koldfs\KOLDING\CF IT og digitalisering\Projekt og Udvikling\LOS\LOS Master Data\Organisations Enheder\"
+    $orgReferenceFile = Import-Csv -Path (Join-Path $orgReferenceFilePath "dataobjects_1000504.csv") -Delimiter ";" -Encoding UTF7 | Sort-Object NRID -Unique
+    $dynTempDir = '\\Kolding.dk\koldfs\alle_system$\Dania\Ressourcer\'
+    $Delimiter = ';'
+}
+
+# Get the current date and format it for the log file name
+$currentDate = Get-Date -Format "dd-MM-yyyy"
+
+# Shared variables for both enviroments
+$logFile = Join-Path $logFilePath "LOS_log_$currentDate.txt"
+$deleteDynTempFolder = Join-Path $dynTempDir "\Slettede afdelinger"
+
+# Create an array to store paths that do not exist
+$nonexistentPaths = @()
+
+# Check if the specified paths exist
+if (!(Test-Path $logFilePath)) {
+    $nonexistentPaths += "Log fil sti: $logFilePath"
+}
+
+if (!(Test-Path $orgReferenceFilePath)) {
+    $nonexistentPaths += "Organisations referense fil sti: $orgReferenceFilePath"
+}
+
+if (!(Test-Path $dynTempDir)) {
+    $nonexistentPaths += "Dynamic template sti: $dynTempDir"
+}
+
+# If any nonexistent paths were found, display an error message and stop further execution
+if ($nonexistentPaths.Count -gt 0) {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under indlæsning af data følgende sti:`n"
+    foreach ($path in $nonexistentPaths) {
+        $logEntry += "- $path`n"
+    }
+    # Skriv fejlen til logfilen
+    Add-Content -Path $logFile -Value "`r`n`r`n--- [$timestamp] : NY KØRSEL ---`r`n"
+    Add-Content -Path $logfile -Value $logEntry
+    return
+}
+else{
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] Alle stier til data kunne indlæses"
+    Add-Content -Path $logFile -Value "`r`n`r`n--- [$timestamp] : NY KØRSEL ---`r`n"
+    Add-Content -Path $logfile -Value $successText -NoNewline
+}
+
+# If the log file already exists, add a separator to indicate a new run
+if (Test-Path $logFile) {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    Add-Content -Path $logFile -Value "`n[$timestamp] Logfilen fandtes allerede. Tekst tilføjes"
+}
+
+# Create form
+try {
+    $Form = New-Object System.Windows.Forms.Form
+    $Form.Text = "Importer LOS til CSV"
+    $Form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedSingle
+    $Form.MaximizeBox = $false
+    $Form.MinimizeBox = $false
+    $Form.StartPosition = "CenterScreen"
+
+    # Set the initial size of the form
+    $initialWidth = 800
+    $initialHeight = 450
+    $Form.ClientSize = New-Object System.Drawing.Size($initialWidth, $initialHeight)
+
+    function LimitFormSizeAndPosition {
+        # Get the screen working area
+        $screenWorkingArea = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+
+        # Calculate the maximum allowed width and height
+        $maxWidth = $screenWorkingArea.Width - 10
+        $maxHeight = $screenWorkingArea.Height - 10
+
+        # Check and adjust form width
+        if ($Form.Width -gt $maxWidth) {
+            $Form.Width = $maxWidth
+        }
+
+        # Check and adjust form height
+        if ($Form.Height -gt $maxHeight) {
+            $Form.Height = $maxHeight
+        }
+
+        # Get the form location
+        $formLocation = $Form.Location
+
+        # Check and adjust form X position
+        if ($formLocation.X -lt $screenWorkingArea.X) {
+            $formLocation.X = $screenWorkingArea.X
+        }
+        elseif ($formLocation.X + $Form.Width -gt $screenWorkingArea.Right) {
+            $formLocation.X = $screenWorkingArea.Right - $Form.Width
+        }
+
+        # Check and adjust form Y position
+        if ($formLocation.Y -lt $screenWorkingArea.Y) {
+            $formLocation.Y = $screenWorkingArea.Y
+        }
+        elseif ($formLocation.Y + $Form.Height -gt $screenWorkingArea.Bottom) {
+            $formLocation.Y = $screenWorkingArea.Bottom - $Form.Height
+        }
+
+        # Update form location
+        $Form.Location = $formLocation
+
+        # Center the form if its size has changed
+        if (($Form.Width -ne $Form.Tag.Width) -or ($Form.Height -ne $Form.Tag.Height)) {
+            $Form.Left = $Form.Left + ($Form.Tag.Width - $Form.Width) / 2
+            $Form.Top = $Form.Top + ($Form.Tag.Height - $Form.Height) / 2
+            $Form.Tag = $Form.Size
+        }
+        # Ensure right edge of the form is at least 10 pixels to the right of the right edge of $StatusLabel
+        $minFormRight = $StatusLabel.Right + 10
+        if ($Form.Right -le $minFormRight) {
+            $Form.Left = $Form.Left - ($minFormRight - $Form.Right)
+        }
+    }
+
+    # Event handler for Form.Resize event
+    $Form.add_Resize({ LimitFormSizeAndPosition })
+
+    # Initial call to set the initial form size
+    $Form.Tag = $Form.Size
+    LimitFormSizeAndPosition
+
+    # Get the current user
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+
+    # Call the function to limit the initial form size and position
+    LimitFormSizeAndPosition
+
+    # Log entry for successful form creation
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "-----Start på oprettelse af Form-----`r`n`[$timestamp] Form oprettet uden fejl.`r`n[$timestamp] Bruger: $currentUser"
+    Add-Content -Path $logfile -Value $successText -NoNewline
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under oprettelse af form (Bruger: $currentUser):`r`n$_`r`n"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+}
+
+# Set background colors
+try {
+    $Color = New-Object System.Drawing.Color
+    $Color = [System.Drawing.Color]::RoyalBlue
+    $Form.BackColor = $Color
+    $ButtonColor = [System.Drawing.Color]::WhiteSmoke
+    $BoxColor = [System.Drawing.Color]::Gainsboro
+
+    # Log entry for successful setting of background colors
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "`r`n-----Start på tilpasning af Form-----`r`n[$timestamp] Baggrundsfarver indstillet uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under indstilling af baggrundsfarver:`r`n$_`r`n`r`n"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+}
+
+# Create label to show selected file path
+try {
+    $FilePathLabel = New-Object System.Windows.Forms.Label
+    $FilePathLabel.AutoSize = $true
+    $Form.Controls.Add($FilePathLabel)
+
+    # Log entry for successful creating a label for showing path
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] FilePathLabel oprettet uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under oprettelse af FilePathLabel:`r`n$_`r`n`r`n"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+}
+
+function Clear-StatusLabel {
+    $StatusLabel.Clear()
+}
+
+# Create rich text box to show Status with bold header
+try {
+    $StatusLabel = New-Object System.Windows.Forms.RichTextBox
+    $StatusLabel.BorderStyle = [System.Windows.Forms.BorderStyle]::Fixed3D
+    $StatusLabel.ScrollBars = "None"
+    $StatusLabel.ReadOnly = $true
+    $Font = New-Object System.Drawing.Font("Microsoft Sans Serif", 10)
+    $StatusLabel.Font = $Font
+    $StatusLabel.SelectionFont = New-Object System.Drawing.Font($Font, [System.Drawing.FontStyle]::Bold)
+    $StatusLabel.SelectedText = "Status:`r`n"
+    $StatusLabel.SelectionFont = $Font
+    $StatusLabel.Visible = $false # Change to $false to hide initially
+    $StatusLabel.BackColor = $BoxColor
+    $StatusLabel.WordWrap = $true
+    $StatusLabel.AutoSize = $true
+    $Form.Controls.Add($StatusLabel)
+
+    # Log entry for successful creation of StatusLabel
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] StatusLabel oprettet uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under oprettelse af StatusLabel:`r`n$_`r`n`r`n"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+}
+
+# Create rich text box to show sheet names with bold header
+try {
+    $SheetLabel = New-Object System.Windows.Forms.RichTextBox
+    $SheetLabel.Location = New-Object System.Drawing.Point(10, 100)
+    $SheetLabel.BorderStyle = [System.Windows.Forms.BorderStyle]::Fixed3D
+    $SheetLabel.ScrollBars = "None"
+    $SheetLabel.ReadOnly = $true
+    $Font = New-Object System.Drawing.Font("Microsoft Sans Serif", 10)
+    $SheetLabel.Font = $Font
+    $SheetLabel.SelectionFont = New-Object System.Drawing.Font($Font, [System.Drawing.FontStyle]::Bold)
+    $SheetLabel.SelectedText = "Faner i LOS arket der indeholder data der skal ændres:`r`n"
+    $SheetLabel.SelectionFont = $Font
+    $SheetLabel.Visible = $false # Change to $false to hide initially
+    $SheetLabel.BackColor = $BoxColor
+    $Form.Controls.Add($SheetLabel)
+
+    # Log entry for successful creation of SheetLabel
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] SheetLabel oprettet uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under oprettelse af SheetLabel:`r`n$_`r`n`r`n"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+}
+
+# Function to adjust Sheet Label size
+try {
+    function AdjustSheetLabelSize() {
+        $stringSize = [System.Windows.Forms.TextRenderer]::MeasureText($SheetLabel.Text, $SheetLabel.Font)
+        $SheetLabel.Width = $stringSize.Width + 50
+        $SheetLabel.Height = $stringSize.Height + 4
+
+    }
+
+    # Call the function to adjust the initial size of the Sheet Label
+    AdjustSheetLabelSize
+
+    # Log entry for successful execution of AdjustSheetLabelSize function
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] AdjustSheetLabelSize funktion udført uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under udførelse af AdjustSheetLabelSize funktion:`r`n$_`r`n`r`n"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+}
+
+try {
+    # Add text changed event to adjust the Sheet Label size
+    $SheetLabel.add_TextChanged({
+            AdjustSheetLabelSize
+        })
+
+    # Log entry for successful addition of text changed event
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] Tekstændringsbegivenhed tilføjet til SheetLabel uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under tilføjelse af tekstændringsbegivenhed til SheetLabel:`r`n$_`r`n`r`n"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+}
+
+# Function to adjust Status Label position
+function AdjustStatusLabelPosition() {
+    try {
+        $stringSize = [System.Windows.Forms.TextRenderer]::MeasureText($StatusLabel.Text, $StatusLabel.Font)
+        $newWidth = $stringSize.Width + 20
+        $newHeight = $stringSize.Height + 4
+
+        # Adjust the width and height of Status Label only if it exceeds the current size
+        if ($newWidth -gt $StatusLabel.Width) {
+            $StatusLabel.Width = $newWidth
+        }
+
+        if ($newHeight -gt $StatusLabel.Height) {
+            $StatusLabel.Height = $newHeight
+        }
+
+        $yPosition = 100
+
+        # Set a minimum height for the form based on Status Label box
+        $minHeight = 450
+        if ($yPosition + $StatusLabel.Height + $CancelButton.Height + 40 -gt $minHeight) {
+            $minHeight = $yPosition + $StatusLabel.Height + $CancelButton.Height + 40
+        }
+
+        # Calculate the new minimum width based on Sheet Label and Status Label boxes
+        $newMinWidth = $SheetLabel.Left + $SheetLabel.Width + 10 + $StatusLabel.Width + 10
+
+        # Get the working area of the screen
+        $screen = [System.Windows.Forms.Screen]::FromControl($Form)
+        $maxWidth = $screen.WorkingArea.Width
+
+        # Check if the new minimum width exceeds the maximum width
+        if ($newMinWidth -gt $maxWidth) {
+            $newMinWidth = $maxWidth
+        }
+
+        # Set the new size of the form
+        $Form.ClientSize = New-Object System.Drawing.Size($newMinWidth, $minHeight)
+
+        # Set the position of the status label
+        $xPosition = $SheetLabel.Right + 10 + 10
+        $maxXPosition = $Form.ClientSize.Width - $StatusLabel.Width - 10
+        
+        if ($xPosition -gt $maxXPosition) {
+            $xPosition = $maxXPosition
+        }
+
+        $StatusLabel.Location = New-Object System.Drawing.Point($xPosition, $yPosition)
+
+        # Call the LimitFormSizeAndPosition function to ensure the form stays within screen boundaries
+        LimitFormSizeAndPosition
+    }
+    catch {
+        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+        $logEntry = "[$timestamp] Fejl under justering af StatusLabel position:`r`n$_`r`n`r`n"
+
+        # Write the error to the log file
+        Add-Content -Path $logfile -Value $logEntry
+    }
+}
+
+# Call the function to adjust the initial position of the Status Label
+AdjustStatusLabelPosition
+
+# Add resize event to adjust the Status Label position
+$Form.Add_Resize({
+        AdjustStatusLabelPosition
+    })
+
+# Update the Status Label size and position when the text changes
+$StatusLabel.add_TextChanged({
+        AdjustStatusLabelPosition
+    })
+
+
+# Function to adjust Cancel Button position
+function AdjustCancelButtonPosition() {
+    $xPosition = $Form.ClientSize.Width - $CancelButton.Width - 10
+    $yPosition = $StatusLabel.Bottom + 10
+    $CancelButton.Location = New-Object System.Drawing.Point($xPosition, $yPosition)
+}
+
+# Create version and author label
+try {
+    $VersionLabel = New-Object System.Windows.Forms.Label
+    $VersionLabel.AutoSize = $true
+    $VersionLabel.Text = "$version | Forfatter: Martin Lund Kristensen"
+    $Form.Controls.Add($VersionLabel)
+
+    # Add MouseDown event to open the log file
+    $VersionLabel.Add_MouseDown({
+            Start-Process -FilePath $logfile
+        })
+
+    # Log entry for successful addition of version and author label
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] VersionLabel oprettet uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under oprettelse af VersionLabel:`r`n$_`r`n`r`n"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+}
+
+# Function to adjust version label position
+function AdjustVersionLabelPosition() {
+    try {
+        $VersionLabel.Location = New-Object System.Drawing.Point(10, ($Form.ClientSize.Height - $VersionLabel.Height - 10))
+    }
+    catch {
+        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+        $logEntry = "[$timestamp] Fejl under justering af VersionLabel position: $($_.Exception.Message)`r`n`r`n"
+    
+        # Write the error to the log file
+        Add-Content -Path $logfile -Value $logEntry
+    }
+}
+
+# Call the function to adjust the initial position of the version label
+try {
+    AdjustVersionLabelPosition
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under justering af VersionLabel position: $($_.Exception.Message)`r`n`r`n"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+}
+
+# Add resize event to adjust the version label position
+$Form.Add_Resize({
+    try {
+        AdjustVersionLabelPosition
+    }
+    catch {
+        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+        $logEntry = "[$timestamp] Fejl under justering af VersionLabel position og størrelse: $($_.Exception.Message)`r`n`r`n"
+        # Write the error to the log file
+        Add-Content -Path $logfile -Value $logEntry
+    }
+})
+
+# Perform check for Excel installation and version
+function Test-ExcelInstallation {
+    try {
+        $excelRegistryPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\excel.exe"
+        $excelPath = (Get-ItemProperty -Path $excelRegistryPath).'(default)'
+
+        if ($excelPath) {
+            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+            $logEntry = "[$timestamp] Excel er installeret på computeren`r`n`r`n"
+            # Write the success to the log file
+            Add-Content -Path $logfile -Value $logEntry
+        } else {
+            $message = "Dette script kræver at Excel er installeret på computeren."
+            $Message += "`nDenne computer har ikke Excel installeret og kan derfor ikke afvikle scriptet."
+            $Message += "`nInstaller Excel på computeren og prøv igen, eller kør scriptet på en computer der har Excel installeret"
+            [System.Windows.Forms.MessageBox]::Show($message, "Excel mangler", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+            $logEntry = "[$timestamp] Excel er ikke installeret på computeren. Scriptet stopper`r`n`r`n"
+            # Write the error to the log file
+            Add-Content -Path $logfile -Value $logEntry
+            exit
+        }
+    }
+    catch {
+        $message = "Scriptet kræver Excel, men der kan ikke findes en Excel installation på denne computer"
+        $message += "`nEr Excel installeret på denne computer?"
+        $confirmation = [System.Windows.Forms.MessageBox]::Show($message, "Test af Excel-installation", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+
+        if ($confirmation -eq 'Yes') {
+            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+            $logEntry = "[$timestamp] Excel er installeret på computeren ifølge brugerens bekræftelse`r`n`r`n"
+            # Write the success to the log file
+            Add-Content -Path $logfile -Value $logEntry
+        } else {
+            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+            $logEntry = "[$timestamp] Excel er ikke installeret på computeren ifølge brugerens bekræftelse`r`n`r`n"
+            # Write the error to the log file
+            Add-Content -Path $logfile -Value $logEntry
+            exit
+        }
+    }}
+
+# Kald funktionen for at teste Excel-installationen
+Test-ExcelInstallation
+
+# Create tool tip object
+try {
+    $ToolTip = New-Object System.Windows.Forms.ToolTip
+    # Log entry for successful creating ToolTip
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] ToolTip oprettet uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under oprettelse af ToolTip: $($_.Exception.Message)`r`n`r`n"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+}
+
+# Create browse button
+try {
+    $BrowseButton = New-Object System.Windows.Forms.Button
+    $BrowseButton.Location = New-Object System.Drawing.Point(10, 10)
+    $BrowseButton.Size = New-Object System.Drawing.Size(100, 30)
+    $BrowseButton.Text = "Vælg LOS ark"
+    $BrowseButton.BackColor = $ButtonColor
+    $ToolTip.SetToolTip($BrowseButton, "Vælg hvilket LOS ark der skal hentes data fra")
+
+    # Log entry for successful creation of browse button
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] BrowseButton oprettet uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under oprettelse af BrowseButton:`r`n$_`r`n`r`n"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+
+    Write-Host "Fejl under oprettelse af BrowseButton: $_"
+}
+
+# Create export button (hidden initially)
+try {
+    $ExportButton = New-Object System.Windows.Forms.Button
+    $ExportButton.Location = New-Object System.Drawing.Point(120, 10)
+    $ExportButton.Size = New-Object System.Drawing.Size(100, 30)
+    $ExportButton.Text = "Eksporter CSV"
+    $ExportButton.Visible = $false
+    $ExportButton.BackColor = $ButtonColor
+    $Form.Controls.Add($ExportButton)
+
+    # Log entry for successful creation of browse button
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] ExportButton oprettet uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under oprettelse af ExportButton:`r`n$_`r`n`r`n"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+
+    Write-Host "Fejl under oprettelse af ExportButton: $_"
+}
+
+# Create Open Folder button and set properties
+try {
+    $OpenFolderBtn = New-Object System.Windows.Forms.Button
+    $OpenFolderBtn.Size = New-Object System.Drawing.Size(150, 30)
+    $OpenFolderBtn.Text = "Åben Mappe"
+    $OpenFolderBtn.BackColor = $ButtonColor
+    $OpenFolderBtn.Visible = $false
+    $OpenFolderBtn.Enabled = $false
+    $ToolTip.SetToolTip($OpenFolderBtn, "Åben mappen hvor CSV filerne er oprettet")
+    
+    # Log entry for successful creation of Open Folder button
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] Open Folder Button oprettet uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under oprettelse af Open Folder Button:`r`n$_`r`n`r`n"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+
+    Write-Host "Fejl under oprettelse af Open Folder Button: $_"
+}
+
+# Function to adjust Open Folder button position
+function OpenFolderBtnPosition() {
+    $OpenFolderBtn.Location = New-Object System.Drawing.Point(($Form.ClientSize.Width - $OpenFolderBtn.Width - 150), ($Form.ClientSize.Height - $OpenFolderBtn.Height - 10))
+}
+
+# Call the function to adjust the initial position of the Open Folder button
+OpenFolderBtnPosition
+
+# Add resize event to adjust the Open Folder button position
+$Form.Add_Resize({
+        OpenFolderBtnPosition
+})
+     
+# Create cancel button
+Try {
+    $CancelButton = New-Object System.Windows.Forms.Button
+    $CancelButton.Size = New-Object System.Drawing.Size(100, 30)
+    $CancelButton.Text = "Luk"
+    $CancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $Form.CancelButton = $CancelButton
+    $Form.Controls.Add($CancelButton)
+    $CancelButton.BackColor = $ButtonColor
+    $ToolTip.SetToolTip($CancelButton, "Afbryd og luk vinduet")
+    
+    # Log entry for successful creation of browse button
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] CancelButton oprettet uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under oprettelse af CancelButton:`r`n$_`r`n`r`n"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+
+    Write-Host "Fejl under oprettelse af CancelButton: $_"
+}
+
+# Function to adjust cancel button position
+function AdjustCancelButtonPosition() {
+    $CancelButton.Location = New-Object System.Drawing.Point(($Form.ClientSize.Width - $CancelButton.Width - 10), ($Form.ClientSize.Height - $CancelButton.Height - 10))
+}
+
+# Call the function to adjust the initial position of the cancel button
+AdjustCancelButtonPosition
+
+# Add resize event to adjust the cancel button position
+$Form.Add_Resize({
+        AdjustCancelButtonPosition
+    })
+
+# Log entry for end of form creation
+$successText = "-----Slut på tilpasning af Form-----`r`n-----Slut på oprettelse af Form-----`r`n"
+Add-Content -Path $logfile -Value $successText
+
+############################################################################################ End of setting up the Windows form ############################################################################################
+
+# Log entry for start of filehandling
+$successText = "`n-----Start på håndtering af filer-----"
+Add-Content -Path $logfile -Value $successText
+
+# Add click event to cancel button
+$CancelButton.Add_Click({
+        # Release Excel resources
+        try {
+            if ($Excel -ne $null -and $global:Workbook -ne $null) {
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
+                $Excel.Quit()
+                $Workbook.Close($false)
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Workbook)
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Excel)
+                $global:Workbook = $null
+                $global:Excel = $null
+            }
+        }
+        catch {
+            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+            $logEntry = "[$timestamp] Fejl opstod under lukning af Workbook og afslutning af Excel i Cancel button function: $_"
+            Add-Content -Path $logfile -Value $logEntry
+        }
+        finally {
+            if ($global:Workbook -ne $null) {
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Workbook)
+                $global:Workbook = $null
+            }
+            if ($global:Excel -ne $null) {
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Excel)
+                $global:Excel = $null
+            }
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+        }
+        $Form.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+        $Form.Close()
+    })
+
+# Continue the browse button function
+$BrowseButton.Add_Click({
+        $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+        $OpenFileDialog.Filter = "Excel Files (*.xlsx)|*.xlsx|All Files (*.*)|*.*"
+        $OpenFileDialog.Title = "Vælg et LOS ark der skal indlæses"
+        $OpenFileDialog.InitialDirectory = [Environment]::GetFolderPath("Desktop")
+        $OpenFileDialog.CheckFileExists = $true
+
+        Clear-StatusLabel
+        $StatusLabel.SelectionFont = New-Object System.Drawing.Font($Font, [System.Drawing.FontStyle]::Bold)
+        $StatusLabel.SelectedText = "Status:`r`n"
+    
+        # Show the dialog box only if the user clicked OK
+        if ($OpenFileDialog.ShowDialog() -eq "OK") {
+            # Set global variable
+            $global:FilePath = $OpenFileDialog.FileName
+            $TextBox = New-Object System.Windows.Forms.TextBox
+            $TextBox.Text = $FilePath
+            
+            # Show Sheet Label
+            $SheetLabel.Visible = $true
+
+            # Show Status Label and set text
+            $StatusLabel.Visible = $true
+            $StatusLabel.SelectedText = "LOS ark indlæses`r`n"
+
+            # Clear the FilePathLabel before setting the new file path
+            $FilePathLabel.Text = ""
+
+            # Set the new file path in FilePathLabel
+            $FilePathLabel.Text = "Sti til valgt fil: " + $FilePath
+            $global:FolderName = $FilePath.split('\.')[-2]
+
+            # Names on folders and CSV files used in the script
+            $SubFolderToRun = 'Skal køres'
+            $SubFolderDone = 'Kørt'
+            $global:OrgCreateCSVName = 'Opret Org Enhed.csv'
+            $global:OrgChangeCSVName = 'Opdater Org Enhed.csv'
+            $global:LederFunkChangeSheet1Name = 'Opdater LederogBrugerfunktioner Update 1.csv'
+            $global:LederFunkChangeSheet2Name = 'Opdater LederogBrugerfunktioner Update 2.csv'
+            $global:UserSheetName = 'Opdater Org identiteter.csv'
+            $global:roleOwnerSheetName = 'Opdater RoleEjer.csv'
+            $global:dlCreateSaveName = 'Opret DL Lister.csv'
+            $global:dlChangeSaveName = 'Opdater DL Lister.csv'
+            $global:dlDeleteSaveName = 'Exchange, Delete DL.csv'
+            $global:CreateOrgFoldersName = 'Opret G-drev.csv'
+            $global:RenameOrgFoldersName = 'Opdater G-drev.csv'
+            $global:DynTempCreateSheetName = 'Opret Dynamic Template.csv'
+            $global:DynTempChangeSheetName = 'Opdater Dynamic Template.csv'
+
+            # Combine directories and names
+            $global:FolderToCreate = Join-Path -Path $FolderPath -ChildPath $FolderName
+            $global:CSVSavePath = Join-Path -Path $FolderToCreate -ChildPath $SubFolderToRun
+            $global:PathWhenDone = Join-Path -Path $FolderToCreate -ChildPath $SubFolderDone
+            $global:SaveOrgCreateSheet = Join-Path $CSVSavePath $OrgCreateCSVName
+            $global:SaveOrgChangeSheet = Join-Path $CSVSavePath $OrgChangeCSVName
+            $global:SavelederogBrugerFunkChangeSheet1 = Join-Path $CSVSavePath $LederFunkChangeSheet1Name
+            $global:SavelederogBrugerFunkChangeSheet2 = Join-Path $CSVSavePath $LederFunkChangeSheet2Name
+            $global:SaveUserSheet = Join-Path $CSVSavePath $UserSheetName
+            $global:SaveRoleOwnerSheet = Join-Path $CSVSavePath $roleOwnerSheetName
+            $global:SaveDlCreateSheet = Join-Path $CSVSavePath $DlCreateSaveName
+            $global:SaveDLChangeSheet = Join-Path $CSVSavePath $dlChangeSaveName
+            $global:SaveDlDeleteSheet = Join-Path $CSVSavePath $DlDeleteSaveName
+            $global:SaveCreateOrgFoldersSheet = Join-Path $CSVSavePath $CreateOrgFoldersName
+            $global:SaveRenameOrgFoldersSheet = Join-Path $CSVSavePath $RenameOrgFoldersName
+            $global:SaveDynTempCreateSheet = Join-Path $CSVSavePath $DynTempCreateSheetName
+            $global:SaveDynTempChangeSheet = Join-Path $CSVSavePath $DynTempChangeSheetName
+
+            # Update FilePathLabel location based on SheetLabel location
+            $FilePathLabel.Location = New-Object System.Drawing.Point(10, ($SheetLabel.Location.Y - 10 - $FilePathLabel.Height))
+
+            # Release Excel resources
+            try {
+                if ($Excel -ne $null -and $global:Workbook -ne $null) {
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+                    $Excel.Quit()
+                    $Workbook.Close($false)
+                    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Workbook)
+                    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Excel)
+                    $global:Workbook = $null
+                    $global:Excel = $null
+                }
+            }
+            catch {
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Fejl opstod under lukning af Workbook og afslutning af Excel i browse button function: $_"
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            finally {
+                if ($global:Workbook -ne $null) {
+                    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Workbook)
+                    $global:Workbook = $null
+                }
+                if ($global:Excel -ne $null) {
+                    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Excel)
+                    $global:Excel = $null
+                }
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
+            }
+            
+            # Create Excel resources
+            $global:Excel = New-Object -ComObject Excel.Application
+            $global:Excel.Visible = $false # �ndres til $true for at vise Excel-arket
+            $global:Excel.DisplayAlerts = $false
+
+            $global:Workbook = $global:Excel.Workbooks.Open($TextBox.Text, 0, $true)
+            $global:SheetNames = New-Object System.Collections.Generic.List[string]
+
+            foreach ($Sheet in $global:Workbook.Worksheets) {
+                if (($Sheet.UsedRange.Rows.Count -gt 1) -and ($Sheet.Name -notlike "*Nuv.*") -and ($Sheet.Name -notlike "*SD*") -and ($Sheet.Cells.Item(2, 1).Value2 -ne $null)) {
+                    [void]$global:SheetNames.Add($Sheet.Name)
+                }
+            }
+
+            # Update rich text box with sheet names from the LOS ark
+            $StatusLabel.SelectedText = "Arket $global:FolderName  er indlæst og klar til yderlig håndtering`r`n"
+            # Clear $sheetlabel box if it has been loaded previously
+            $SheetLabel.Clear()
+            # Add sheet names to $sheetlabel box
+            $SheetLabel.SelectionFont = New-Object System.Drawing.Font($Font, [System.Drawing.FontStyle]::Bold)
+            $SheetLabel.SelectedText = "Faner i LOS arket der indeholder data der skal ændres:`r`n"
+            $SheetLabel.SelectedText = ($SheetNames -join "`r`n")
+            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+            $logEntry = "[$timestamp] LOS ark $global:FolderName indlæste uden fejl"
+            # Write the success message to the log file
+            Add-Content -Path $logfile -Value $logEntry
+
+            $ExportButton.Visible = $true
+            # Set tool tip text for export button
+            $ToolTip.SetToolTip($ExportButton, "Eksporter data fra LOS arket til CSV filer")
+            $CancelButton.Text = "Annuller"
+        }
+        else {
+            $CancelButton.Text = "Annuller"
+        }
+    
+        # Call the LimitFormSizeAndPosition function to ensure the form stays within screen boundaries
+        LimitFormSizeAndPosition
+    })
+
+# Continue the export button function
+$ExportButton.Add_Click({
+        Clear-StatusLabel
+        $StatusLabel.SelectionFont = New-Object System.Drawing.Font($Font, [System.Drawing.FontStyle]::Bold)
+        $StatusLabel.SelectedText = "Status:`r`n"
+        $StatusLabel.SelectedText = "LOS ark indlæses`r`n"
+        $StatusLabel.SelectedText = "Arket $global:FolderName er indlæst og klar til yderlig håndtering`r`n"
+        $StatusLabel.SelectedText = "Arket $global:FolderName bliver nu behandlet:`r`n"
+        # Check if a folder with the name of the LOS file already exists and create one if not
+        if (!(Test-Path $global:FolderToCreate -PathType Container)) {
+            try {
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nDer oprettes en ny folder med navnet: $global:FolderName hvor CSV filerne bliver oprettet`r`n`n"
+                New-Item -ItemType Directory -Force -Path $global:FolderToCreate | Out-Null
+                New-Item -ItemType Directory -Force -Path $global:CSVSavePath | Out-Null
+                New-Item -ItemType Directory -Force -Path $global:PathWhenDone | Out-Null
+
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $successText = "[$timestamp] Nye mapper oprettet uden fejl: $global:FolderName."
+                Add-Content -Path $logfile -Value $successText
+            }
+            catch {
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Fejl under oprettelse af mapper:`r`n$_`r`n`r`n"
+
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+        else {
+            $Message = "Følgende mappe findes allerede:`n`n"
+            $Message += "$($global:FolderName)`n"
+            $Message += "`nVil du fortsætte?"
+            $DialogResult = [System.Windows.Forms.MessageBox]::Show($Message, "Mappen $global:FolderName eksisterer allerede", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+
+            if ($DialogResult -eq [System.Windows.Forms.DialogResult]::Yes) {
+                $StatusLabel.SelectionColor = "Red"
+                $StatusLabel.SelectedText = "`nDer findes allerede en folder med navnet $global:FolderName!`r`nScriptet fortsætter, men kontroler at CSV filerner er oprettet korrekt når scriptet er færdigt`r`n`n"
+            
+                # Add entry to the logfile
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "`r`n-----Start på sletning af CSV filer-----"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            
+                # Define an array of CSV file paths
+                $csvFiles = @($SaveOrgCreateSheet, $SaveCreateOrgFoldersSheet, $SaveDynTempCreateSheet, $SaveOrgChangeSheet, $SavelederogBrugerFunkChangeSheet1, $SavelederogBrugerFunkChangeSheet2, $SaveDlCreateSheet, $SaveDLChangeSheet, $SaveDynTempChangeSheet, $SaveUserSheet, $SaveRoleOwnerSheet, $SaveDlDeleteSheet, $SaveRenameOrgFoldersSheet)
+
+                # Define an array to store failed files
+                $failedFiles = @()
+
+                foreach ($csvFile in $csvFiles) {
+                    if (Test-Path $csvFile) {
+                        $fileName = Split-Path -Leaf $csvFile
+                
+                        try {
+                            # Try to delete the file
+                            Remove-Item $csvFile -ErrorAction Stop
+
+                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                            $logEntry = "[$timestamp] Sletning af filen $fileName skete uden fejl."
+                            $StatusLabel.SelectionColor = "Orange"
+                            $StatusLabel.SelectedText = "$fileName slettet.`r`n"
+                            Add-Content -Path $logfile -Value $logEntry
+                        }
+                        catch {
+                            # Failed to delete the file
+                            $message = "Filen '$fileName' kan ikke slettes, da den er i brug af en anden proces eller bruger."
+                            [System.Windows.Forms.MessageBox]::Show($message, "Kan ikke slette filen $fileName", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+
+                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                            $errorText = "[$timestamp] Filen $fileName kunne ikke slettes, da den er i brug af en anden proces eller bruger."
+                            $statusText = "Filen $fileName kunne ikke slettes, da den er i brug af en anden proces eller bruger`n"
+                            $StatusLabel.SelectionColor = "Red"
+                            $StatusLabel.SelectedText = $statusText
+                            Add-Content -Path $logfile -Value $errorText
+
+                            # Add the failed file to the array
+                            $failedFiles += , $csvFile
+                        }
+                    }
+                }
+
+                # Add entry to the logfile
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "-----Slut på sletning af CSV filer-----"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            else {
+                $StatusLabel.SelectionColor = "Red"
+                $StatusLabel.SelectedText = "`nScriptet blev afbrudt af brugeren, da der allerede findes en folder med navnet $global:FolderName.`r`nIngen nye CSV filer er oprettet!"
+                # Add entry to the logfile
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "`r`n[$timestamp] Scriptet blev afbrudt af brugeren, da der allerede findes en folder med navnet $global:FolderName.`r`nIngen nye CSV filer er oprettet!"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+                return
+            }
+        }
+
+        # Building translate array for use in creating and changing drives later in the script
+        $TranslateArr = @(
+            @{
+                ShortName        = "CF"
+                ForvaltningsName = "Centralforvaltningen"
+            },
+            @{
+                ShortName        = "BF"
+                ForvaltningsName = "By og Udviklingsforvaltningen"
+            },
+            @{
+                ShortName        = "BUF"
+                ForvaltningsName = "Børne- og Uddannelsesforvaltningen"
+            },
+            @{
+                ShortName        = "SSF"
+                ForvaltningsName = "Senior-, Sundhed- og Fritidsforvaltningen"
+            },
+            @{
+                ShortName        = "SAF"
+                ForvaltningsName = "Social- og Arbejdsmarkedsforvaltningen"
+            },
+            @{
+                ShortName        = "PO"
+                ForvaltningsName = "Politisk Organisation"
+            }
+        ) | ForEach-Object { New-Object psobject -Property $_ }
+                
+        # Load the WorkSheet for Org Create/Change/Delete
+        $orgCreateSheet = $WorkBook.Worksheets | where-object { $_.name -like "Org. Opret" }
+        $orgChangeSheet = $WorkBook.Worksheets | where-object { $_.name -like "Org. Ændre" }
+        #$orgDeleteSheet = $WorkBook.Worksheets | where-object { $_.name -like "Org. Slet" }
+
+        # Load the WorkSheet for Drive Create/Change/Delete
+        $driveCreateSheet = $WorkBook.Worksheets | where-object { $_.name -like "Afd. drev Opret" }
+        $driveChangeSheet = $WorkBook.Worksheets | where-object { $_.name -like "Afd. drev Ændre" }
+        #$driveDeleteSheet = $WorkBook.Worksheets | where-object { $_.name -like "Afd. drev Slet" }
+
+        # Load the WorkSheet for User Change
+        #$userChangeSheet = $WorkBook.Worksheets | where-object { $_.name -like "Brugere Ændre" }
+
+        # Load the WorkSheet for Acadre Create/Change/Delete
+        #$acadreCreateSheet = $WorkBook.Worksheets | where-object { $_.name -like "Acadre Opret" }
+        #$acadreChangeSheet = $WorkBook.Worksheets | where-object { $_.name -like "Acadre Ændre" }
+        #$acadreDeleteSheet = $WorkBook.Worksheets | where-object { $_.name -like "Acadre Slet" }
+
+        # Load the WorkSheet for DL Create/Change/Delete
+        $dlCreateSheet = $WorkBook.Worksheets | where-object { $_.name -like "DL Opret" }
+        $dlChangeSheet = $WorkBook.Worksheets | where-object { $_.name -like "DL Ændre" }
+        #$dlDeleteSheet = $WorkBook.Worksheets | where-object { $_.name -like "DL Slet" }
+
+        # Load the WorkSheet for Calender Create/Change/Delete
+        $calenderCreateSheet = $WorkBook.Worksheets | where-object { $_.name -like "Kalender Opret" }
+        $calenderChangeSheet = $WorkBook.Worksheets | where-object { $_.name -like "Kalender Ændre" }
+        #$calenderDeleteSheet = $WorkBook.Worksheets | where-object { $_.name -like "Kalender Slet" }
+
+        # Load the WorkSheet for Mail Create/Change/Delete
+        $mailCreateSheet = $WorkBook.Worksheets | where-object { $_.name -like "Mailboks Opret" }
+        $mailChangeSheet = $WorkBook.Worksheets | where-object { $_.name -like "Mailboks Ændre" }
+        #$mailDeleteSheet = $WorkBook.Worksheets | where-object { $_.name -like "Mailboks Slet" }
+                
+        # Log entry for start of filehandling
+        $successText = "-----Slut på håndtering af filer-----"
+        Add-Content -Path $logfile -Value $successText
+
+        ############################################################################################ Starting Create phase ############################################################################################
+
+        $logEntry = "`r`n`r`n-----Start på oprettelse af CSV filer for nyt data-----"
+        # Write the success message to the log file
+        Add-Content -Path $logfile -Value $logEntry
+    
+        #### Create a CSV file for Org Create ####
+
+        $orgSheetName = $orgCreateSheet.name
+        $exportorgCreateList = @()
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $orgCreateSheet) {
+                if ($ws.Cells.Item($i, 3).Value() -ne $null ) {
+                    $name = $ws.Cells.Item($i, 3).Value()
+                    $orgCreateUnit = $ws.Cells.Item($i, 1).Value()
+                    if ($name -eq $null) {
+                        $orgType = $null
+                    }
+                    else {
+                        $orgType = 'OrgUnit'
+                    }
+                    $higherOrg = $ws.Cells.Item($i, 4).Value()
+                    #$manager = $ws.Cells.Item($i, 6).Value()
+                    #$superUser = $ws.Cells.Item($i, 7).Value()
+                    $lokations = $ws.Cells.Item($i, 5).Value()
+                    if ($name -eq $null) {
+                        $Maildomain = $null
+                    }
+                    else {
+                        $Maildomain = 'kolding.dk'
+                    }
+                    $forvaltning = $ws.Cells.Item($i, 2).Value()
+                    $description = $forvaltning + ' ' + $name
+                    $admOrg = 'ADM Org'
+                    $NRID = $null
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen værdi i variablen for Organisation oprette"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+            } #End the foreach loop
+
+            $i++    
+
+            # Create orgCreate with the required properties
+            $orgCreateObj = New-Object System.Object
+            $orgCreateObj | Add-Member -Type NoteProperty -Name OUID -Value $orgCreateUnit
+            $orgCreateObj | Add-Member -Type NoteProperty -Name Shortname -Value $orgCreateUnit
+            $orgCreateObj | Add-Member -Type NoteProperty -Name 'Org description' -Value $description
+            $orgCreateObj | Add-Member -Type NoteProperty -Name Name -Value $name
+            $orgCreateObj | Add-Member -Type NoteProperty -Name Management -Value $forvaltning
+            $orgCreateObj | Add-Member -Type NoteProperty -Name Locations -Value $lokations
+            $orgCreateObj | Add-Member -Type NoteProperty -Name Maildomain -Value $Maildomain
+            $orgCreateObj | Add-Member -Type NoteProperty -Name 'Parent OU' -Value $higherOrg
+            $orgCreateObj | Add-Member -Type NoteProperty -Name 'OU type' -Value $orgType
+            $orgCreateObj | Add-Member -Type NoteProperty -Name 'Org Placering' -Value $admOrg
+            $orgCreateObj | Add-Member -Type NoteProperty -Name NRID -Value $NRID
+
+            # Add $orgCreate object to the export list
+            $exportorgCreateList += $orgCreateObj
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($name -eq $null) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke oprettes nye org enheder. Scriptet fortsætter"
+        }
+        else {
+            try {
+                $exportorgCreateList | Export-Csv $global:SaveOrgCreateSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation
+
+                # Clear the export list
+                $exportorgCreateList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nOrganisationsdata fra fanen $orgSheetName blev eksporteret til CSV filen: $OrgCreateCSVName"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Organisationsdata fra fanen $orgSheetName blev eksporteret korrekt"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            catch {
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Fejl under eksport af Organisationsdata fra fanen $orgSheetName :`r`n$_`r`n"
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+    
+        #### End of Create a CSV file for Org Create ####
+
+            
+        #### Create CSV file for Dynamic Template folders Create ####
+          
+        $exportdynCreateList = @()
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $orgCreateSheet) {
+                if ($ws.Cells.Item($i, 3).Value() -ne $null ) {
+                    $dynCreateOrgName = $ws.Cells.Item($i, 3).Value()
+                    $dynCreateOrgunit = $ws.Cells.Item($i, 2).Value() + ' ' + $dynCreateOrgName
+                    $dynCreateOrgForvaltningShort = $ws.Cells.Item($i, 2).Value()
+                    # Define what Org is selected and translate short name to full name
+                    Foreach ($line in $TranslateArr) {
+                        if ($line.ShortName -eq $dynCreateOrgForvaltningShort) {
+                            $dynCreateOrgForvaltning = $line.ForvaltningsName
+                        } #End the if loop
+                    }#End the foreach loop
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen værdi i variablen for Dynamic Template oprette"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }#End the else loop
+            } #End the foreach loop
+
+            $i++    
+
+            # Create dynTempCreateObj with the required properties
+            $dynTempCreateObj = New-Object System.Object
+            $dynTempCreateObj | Add-Member -Type NoteProperty -Name Organisationsnavn -Value $dynCreateOrgunit
+            $dynTempCreateObj | Add-Member -Type NoteProperty -Name Afdelingsnavn -Value $dynCreateOrgName
+            $dynTempCreateObj | Add-Member -Type NoteProperty -Name Forvaltningsnavn -Value $dynCreateOrgForvaltning
+
+            # Add $dynTempCreateObj to the export list
+            $exportdynCreateList += $dynTempCreateObj
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+        
+        # Check if export is needed
+        if ($dynCreateOrgunit -eq $null) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke oprettes nye Dynamic Template foldere. Scriptet fortsætter"
+        }
+        else {
+            Try {
+                $exportdynCreateList | Export-Csv $SaveDynTempCreateSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation
+        
+                # Clear the export list
+                $exportdynCreateList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nDynamic Template data fra fanen $orgSheetName blev eksporteret til CSV filen: $DynTempCreateSheetName"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Dynamic Template data fra fanen $orgSheetName blev eksporteret korrekt"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            catch {
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Fejl under eksport af Dynamic Template data fra fanen $orgSheetName :`r`n$_`r`n"
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+        
+        #### End of Create CSV file for Dynamic Template folders Create ####
+
+
+        #### Create a CSV file for Drive Create ####
+    
+        $exportDriveCreateList = @()
+        $driveSheetName = $driveCreateSheet.name
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $driveCreateSheet) {
+                if ($ws.Cells.Item($i, 1).Value() -ne $null) {
+                    $driveCreateShortName = $ws.Cells.Item($i, 1).Value()
+                    $driveCreateFullName = $ws.Cells.Item($i, 2).Value()
+                    $driveCreateOrg = $ws.Cells.Item($i, 3).Value()
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen værdi i variablen for G-drev oprette"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+            } #End the foreach loop
+
+            $i++    
+
+            # Create driveCreateObj with the required properties
+            $driveCreateObj = New-Object System.Object
+            $driveCreateObj | Add-Member -Type NoteProperty -Name Forvaltning -Value $driveCreateShortName
+            $driveCreateObj | Add-Member -Type NoteProperty -Name Mappenavn -Value $driveCreateFullName
+            $driveCreateObj | Add-Member -Type NoteProperty -Name Organisationsenhed -Value $driveCreateOrg
+
+            # Add $driveCreateObj to the export list
+            $exportDriveCreateList += $driveCreateObj
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($driveCreateShortName -eq $null) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke oprettes nye G-drev. Scriptet fortsætter"
+        }
+        else {
+            Try {
+                $exportDriveCreateList | Export-Csv $SaveCreateOrgFoldersSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation
+
+                # Clear the export list
+                $exportDriveCreateList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nG-drevsdata fra fanen $driveSheetName blev eksporteret til CSV filen: $CreateOrgFoldersName"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] G-drevsdata fra fanen $driveSheetName blev eksporteret korrekt"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            catch {
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Fejl under eksport af G-drevsdata fra fanen $driveSheetName :`r`n$_`r`n"
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+
+        #### End of Create a CSV file for Drive Create ####
+
+
+        #### Create a CSV file for Org. DL Create for each new org ####
+
+        $exportDLCreateList = @()
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $orgCreateSheet) {
+                if ($ws.Cells.Item($i, 1).Value() -ne $null) {
+                    $FirstCellValueDlCreate = $ws.Cells.Item($i, 1).value() #Reads the content of Cell A2 in the Org create sheet. The variable is used to check if a CSV file is needed
+                    $DLName = 'DL ' + $ws.Cells.Item($i, 2).value() + ' ' + $ws.Cells.Item($i, 3).value()
+                    #Clean up the name of the new DL list
+                    $dlCreateCleanname = $DLName -replace '[)#?\/\{(*]', ''
+                    $dlCreateCleanname = $dlCreateCleanname -replace ',', ''
+                    $dlCreateCleanname = $dlCreateCleanname -replace '_', ''
+                    #Set the primary SMTP
+                    $dlCreateCleannameSMTP = $dlCreateCleanname
+                    $dlCreateCleannameSMTP = $dlCreateCleannameSMTP -replace '\.', ''
+                    $dlCreateCleannameSMTP = $dlCreateCleannameSMTP -replace '\-', ''
+                    $dlCreateCleannameSMTP = $dlCreateCleannameSMTP -replace ' ', ''
+                    $dlCreateCleannameSMTP = $dlCreateCleannameSMTP -replace 'æ', 'ae'
+                    $dlCreateCleannameSMTP = $dlCreateCleannameSMTP -replace 'ø', 'o'
+                    $dlCreateCleannameSMTP = $dlCreateCleannameSMTP -replace 'å', 'aa'
+                    $NewPrimarySMTP = $dlCreateCleannameSMTP + "@kolding.dk"
+                    $MemberDepartRestriction = 'Closed'
+                    $MemberJoinRestriction = 'Closed'
+                    $OrganizationalUnit = 'OU=.gDistributionslister,DC=kolding,DC=dk'
+                    $Type = 'Security'
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen værdi i variablen for Org. DL Lister oprette"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+            } #End the foreach loop
+
+            $i++
+
+            # Create DLCreateeObj with the required properties
+            $DlCreateeObj = New-Object System.Object
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name Name -Value $dlCreateCleanname
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name Alias -Value $dlCreateCleannameSMTP
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name DisplayName -Value $dlCreateCleanname
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name PrimarySmtpAddress -Value $NewPrimarySMTP
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name MemberDepartRestriction -Value $MemberDepartRestriction
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name MemberJoinRestriction -Value $MemberJoinRestriction
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name OrganizationalUnit -Value $OrganizationalUnit
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name SamAccountName -Value $dlCreateCleanname
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name Type -Value $Type
+
+            # Add $DlCreateeObj to the export list
+            $exportDLCreateList += $DlCreateeObj
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($FirstCellValueDlCreate -eq $null) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke oprettes Org. DL Lister. Scriptet fortsætter"
+        }
+        else {
+            Try {
+                $exportDLCreateList | Export-Csv $SaveDlCreateSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation
+                # Clear the export list
+                $exportDLCreateList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nDL lister fra fanen $orgSheetName blev eksporteret til CSV filen: $dlCreateSaveName"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] DL lister fra fanen $orgSheetName blev eksporteret korrekt"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            catch {
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Fejl under eksport af DL lister fra fanen $orgSheetName :`r`n$_`r`n"
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+
+        #### End of CSV file for Org. DL Create for each new org ####
+
+
+        #### Continue Funk. DL Create from DL Create Sheet ####
+    
+        $dlSheetName = $dlCreateSheet.name
+        $exportFunkDLCreateList = @()
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $dlCreateSheet) {
+                if ($ws.Cells.Item($i, 1).value() -ne $null) {
+                    $FirstCellValueFunkDlCreate = $ws.Cells.Item($i, 1).value() #Reads the content of Cell A2 in the Org create sheet. The variable is used to check if a CSV file is needed
+                    $DLName = $ws.Cells.Item($i, 1).value()
+                    #Clean up the name of the new DL list
+                    $dlCreateCleanname = $DLName -replace '[)#?\/\{(*]', ''
+                    $dlCreateCleanname = $dlCreateCleanname -replace ',', ''
+                    $dlCreateCleanname = $dlCreateCleanname -replace '_', ''
+                    #Set the primary SMTP
+                    $dlCreateCleannameSMTP = $dlCreateCleanname
+                    $dlCreateCleannameSMTP = $dlCreateCleannameSMTP -replace '\.', ''
+                    $dlCreateCleannameSMTP = $dlCreateCleannameSMTP -replace '\-', ''
+                    $dlCreateCleannameSMTP = $dlCreateCleannameSMTP -replace ' ', ''
+                    $dlCreateCleannameSMTP = $dlCreateCleannameSMTP -replace 'æ', 'ae'
+                    $dlCreateCleannameSMTP = $dlCreateCleannameSMTP -replace 'ø', 'o'
+                    $dlCreateCleannameSMTP = $dlCreateCleannameSMTP -replace 'å', 'aa'
+                    $NewPrimarySMTP = $dlCreateCleannameSMTP + "@kolding.dk"
+                    $MemberDepartRestriction = 'Closed'
+                    $MemberJoinRestriction = 'Closed'
+                    $OrganizationalUnit = 'OU=.gDistributionslister,DC=kolding,DC=dk'
+                    $Type = 'Security'
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen værdi i variablen for funk DL Lister oprette"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+            } #End the foreach loop
+
+            $i++
+
+            # Create DLCreateeObj with the required properties
+            $DlCreateeObj = New-Object System.Object
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name Name -Value $dlCreateCleanname
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name Alias -Value $dlCreateCleannameSMTP
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name DisplayName -Value $dlCreateCleanname
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name PrimarySmtpAddress -Value $NewPrimarySMTP
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name MemberDepartRestriction -Value $MemberDepartRestriction
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name MemberJoinRestriction -Value $MemberJoinRestriction
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name OrganizationalUnit -Value $OrganizationalUnit
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name SamAccountName -Value $dlCreateCleanname
+            $DlCreateeObj | Add-Member -Type NoteProperty -Name Type -Value $Type
+
+            # Add $DlCreateeObj to the export list
+            $exportFunkDLCreateList += $DlCreateeObj
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($FirstCellValueFunkDlCreate -eq $null ) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke oprettes Funk. DL Lister. Scriptet fortsætter"
+        }
+        else {
+            Try {
+                $exportFunkDLCreateList | Export-Csv $SaveDlCreateSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation -Append
+                $exportFunkDLCreateList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nDL lister fra fanen $dlSheetName blev eksporteret og tilføjet til CSV filen: $dlCreateSaveName"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] DL lister fra fanen $dlSheetName blev eksporteret korrekt"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            catch {
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Fejl under eksport af DL lister fra fanen $dlSheetName :`r`n$_`r`n"
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+
+        #### End of Funk. DL Create from DL Create Sheet ####
+
+        $logEntry = "-----Afslutning af oprettelse af CSV filer for nyt data-----"
+        # Write the success message to the log file
+        Add-Content -Path $logfile -Value $logEntry
+
+
+        ############################################################################################ End of Create phase - Starting Change phase ############################################################################################
+
+
+        $logEntry = "`r`n`r`n-----Start på oprettelse af CSV filer for ændring af data-----"
+        # Write the success message to the log file
+        Add-Content -Path $logfile -Value $logEntry
+
+
+        #### Create a CSV file for Org Change ####
+        $exportOrgChangeList = @()
+        $orgChangeSheetName = $orgChangeSheet.name
+        # Imports used in this section of the script
+
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $orgChangeSheet) {
+                if ($ws.Cells.Item($i, 1).value() -ne $null) {
+                    #$orgChangeExport = $ws.Cells.Item($i, 1).value()
+                    if ($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -ne $null) {
+                        $orgChangeName = $ws.Cells.Item($i, 11).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -ne $null)) {
+                        $orgChangeName = $ws.Cells.Item($i, 3).Value()
+                    }
+                    else {
+                        $orgChangeName = $null
+                    }# This section looks for a value in the "Navn" coloumn in the LOS ark and if there is a value in the "Nyt Navn" coloumn it will use that, otherwise it will use the value from the "Navn" coloumn
+
+                    if ($ws.Cells.Item($i, 1).Value() -ne $null -and $ws.Cells.Item($i, 9).Value() -ne $null) {
+                        $orgChangeUnit = $ws.Cells.Item($i, 9).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 1).Value() -ne $null -and $ws.Cells.Item($i, 9).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -ne $null)) {
+                        $orgChangeUnit = $ws.Cells.Item($i, 1).Value()
+                    }
+                    else {
+                        $orgChangeUnit = $null
+                    }# This section looks for a value in the "Kort navn" coloumn in the LOS ark and if there is a value in the "Nyt kortnavn" coloumn it will use that, otherwise it will use the value from the "Kort navn" coloumn
+
+                    try {
+                        $orginalChangeUnit = $ws.Cells.Item($i, 1).Value() -replace "^$", "null"
+                        $ouidInBoth = Compare-Object -ReferenceObject $orgReferenceFile.OUID -DifferenceObject $orginalChangeUnit -IncludeEqual | Where-Object { $_.SideIndicator -eq "==" } | Select-Object -ExpandProperty InputObject
+                        if ($ouidInBoth -ne $null) {
+                            $Changeresults = ForEach ($ouid in $ouidInBoth) {
+                                $u = $orgReferenceFile | Where-Object { $_.OUID -eq $ouid }
+                    
+                                New-Object -TypeName psobject -Property @{
+                                    "OUID" = $ouid
+                                    "NRID" = $u.NRID
+                                }
+                            }
+                            # Log a message for successful processing
+                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                            $logEntry = "[$timestamp] Der blev fundet et Match for $orginalChangeUnit i orgReferenceFile"
+                            Add-Content -Path $logfile -Value $logEntry
+                        }
+                        else {
+                            # Log a message for no match found
+                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                            $logEntry = "[$timestamp] !!!!! Der blev ikke fundet et match for $orginalChangeUnit i orgReferenceFile !!!!!"
+                            Add-Content -Path $logfile -Value $logEntry
+                        }
+                    }
+                    catch {
+                        # Log an error message if something went wrong
+                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                        $logEntry = "[$timestamp] Der skete en fejl mens der blev lavet sammenligning af OUID $orginalChangeUnit :`r`n$($_.Exception.Message)`r`n"
+                        Add-Content -Path $logfile -Value $logEntry
+                    }
+                    
+                    if ($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -ne $null) {
+                        $orgChangeNumber = $Changeresults.NRID
+                    }
+                    elseif (($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -ne $null)) {
+                        $orgChangeNumber = $Changeresults.NRID
+                    }
+                    else {
+                        $orgChangeNumber = $null
+                    }# This section will set the NRID in the CSV file based on if there is value in coloumn "Nyt kortnavn" or coloumn "Nyt Navn" in the LOS ark
+
+                    if ($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -ne $null) {
+                        $orgChangeForvaltning = $ws.Cells.Item($i, 10).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -ne $null)) {
+                        $orgChangeForvaltning = $ws.Cells.Item($i, 2).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -ne $null)) {
+                        $orgChangeForvaltning = $ws.Cells.Item($i, 2).Value()
+                    }
+                    else {
+                        $orgChangeForvaltning = $null
+                    }# This section looks for a value in the "Forvaltning" coloumn in the LOS ark and if there is a value in the "Ny Forvaltning" coloumn it will use that, otherwise it will use the value from the "Forvaltning" coloumn
+
+                    if ($ws.Cells.Item($i, 4).Value() -ne $null -and $ws.Cells.Item($i, 12).Value() -ne $null) {
+                        $orgChangeHigherOrg = $ws.Cells.Item($i, 12).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 4).Value() -ne $null -and $ws.Cells.Item($i, 12).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -ne $null)) {
+                        $orgChangeHigherOrg = ($ws.Cells.Item($i, 4).Value() | Select-String '(?<=\[)[^]]+(?=\])' -AllMatches).Matches.Value
+                    }
+                    elseif (($ws.Cells.Item($i, 4).Value() -ne $null -and $ws.Cells.Item($i, 12).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -ne $null)) {
+                        $orgChangeHigherOrg = ($ws.Cells.Item($i, 4).Value() | Select-String '(?<=\[)[^]]+(?=\])' -AllMatches).Matches.Value
+                    }
+                    else {
+                        $orgChangeHigherOrg = $null
+                    }# This section looks for a value in the "Overordnet enhed" coloumn in the LOS ark and if there is a value in the "Ny Overordnet enhed" coloumn it will use that, otherwise it will use the value from the "Overordnet enhed" coloumn
+                    $orgChangeDescription = $orgChangeForvaltning + ' ' + $orgChangeName
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen værdi i variablen for Organisation ændre"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+            } #End the foreach loop
+
+            $i++    
+
+            # Create orgChangeObj with the required properties
+            $orgChangeeObj = New-Object System.Object
+            $orgChangeeObj | Add-Member -Type NoteProperty -Name NRID -Value $orgChangeNumber
+            $orgChangeeObj | Add-Member -Type NoteProperty -Name OUID -Value $orgChangeUnit
+            $orgChangeeObj | Add-Member -Type NoteProperty -Name Shortname -Value $orgChangeUnit
+            $orgChangeeObj | Add-Member -Type NoteProperty -Name 'Org description' -Value $orgChangeDescription
+            $orgChangeeObj | Add-Member -Type NoteProperty -Name Name -Value $orgChangeName
+            $orgChangeeObj | Add-Member -Type NoteProperty -Name Management -Value $orgChangeForvaltning
+            $orgChangeeObj | Add-Member -Type NoteProperty -Name 'Parent OU' -Value $orgChangeHigherOrg
+
+            # Add $orgChangeObj to the export list
+            $exportorgChangeList += $orgChangeeObj
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($exportorgChangeList -eq $null) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke ændres org enheder. Scriptet fortsætter"
+        }
+        else {
+            $exportorgChangeList = $exportorgChangeList  | Where-Object 'Org description' -NE " "
+            # Check if the new file name matches any file in the failedFiles array
+            if ($failedFiles -contains $SaveOrgChangeSheet) {
+                # File name matches a failed file, skip creation
+                $StatusLabel.SelectionColor = "Red"
+                $StatusLabel.SelectedText = "`nFilen $OrgChangeCSVName blev ikke oprettet, da den tidligere version af filen ikke kunne slettes."
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $OrgChangeCSVName blev ikke oprettet da den tidligere version af filen ikke kunne slettes."
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            else {
+                # File name does not match any failed file, proceed with creation
+                $exportorgChangeList | Export-Csv $SaveOrgChangeSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation
+                $exportorgChangeList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nOrganisationsdata fra fanen $orgChangeSheetName blev eksporteret og tilføjet til CSV filen: $OrgChangeCSVName"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $OrgChangeCSVName blev oprettet korrekt"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+
+        #### End of Create a CSV file for Org Change ####
+
+
+        #### Create a CSV file for Org. DL Change file####
+
+        $exportorgChangeDLList = @()
+        $i = 2
+        
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $orgChangeSheet) {
+                if ($orgChangeSheet.Cells.Item($i, 10).value() -ne $null -or $orgChangeSheet.Cells.Item($i, 11).value() -ne $null) {
+                    $DLOldName = 'DL ' + $orgChangeSheet.Cells.Item($i, 2).value() + ' ' + $orgChangeSheet.Cells.Item($i, 3).value()
+                    
+                    if ($orgChangeSheet.Cells.Item($i, 10).value() -ne $null -and $orgChangeSheet.Cells.Item($i, 11).value() -ne $null) {
+                        $DLNewName = 'DL ' + $orgChangeSheet.Cells.Item($i, 10).value() + ' ' + $orgChangeSheet.Cells.Item($i, 11).value()
+                    }
+                    elseif ($orgChangeSheet.Cells.Item($i, 10).value() -ne $null -and $orgChangeSheet.Cells.Item($i, 11).value() -eq $null) {
+                        $DLNewName = 'DL ' + $orgChangeSheet.Cells.Item($i, 10).value() + ' ' + $orgChangeSheet.Cells.Item($i, 3).value()
+                    }
+                    elseif ($orgChangeSheet.Cells.Item($i, 10).value() -eq $null -and $orgChangeSheet.Cells.Item($i, 11).value() -ne $null) {
+                        $DLNewName = 'DL ' + $orgChangeSheet.Cells.Item($i, 2).value() + ' ' + $orgChangeSheet.Cells.Item($i, 11).value()
+                    }
+        
+                    # Create orgDLChangeObj with the required properties
+                    $orgDLChangeObj = New-Object System.Object
+                    $orgDLChangeObj | Add-Member -Type NoteProperty -Name Navn -Value $DLOldName
+                    $orgDLChangeObj | Add-Member -Type NoteProperty -Name 'Nyt navn' -Value $DLNewName
+        
+                    # Add $lederFunkChangeObj to the export list
+                    $exportorgChangeDLList += $orgDLChangeObj
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen værdi i variablen for Org DL. ændre"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+            } #End the foreach loop
+        
+            $i++    
+        
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+        
+        # Check if export is needed
+        if ($exportorgChangeDLList -eq $null) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke ændres organisatoriske DL lister. Scriptet fortsætter"
+        }
+        else {
+            $filteredExportList = $exportorgChangeDLList | Where-Object { $_.'Nyt navn' -ne $null }
+            if ($filteredExportList -ne $null) {            
+                # Check if the new file name matches any file in the failedFiles array
+                if ($failedFiles -contains $SaveDLChangeSheet) {
+                    # File name matches a failed file, skip creation
+                    $StatusLabel.SelectionColor = "Red"
+                    $StatusLabel.SelectedText = "`nFilen $dlChangeSaveName blev ikke oprettet, da den tidligere version af filen ikke kunne slettes."
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Filen $dlChangeSaveName blev ikke oprettet da den tidligere version af filen ikke kunne slettes."
+                    # Write the error to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+                else {
+                    # File name does not match any failed file, proceed with creation    
+                    $filteredExportList | Export-Csv $SaveDLChangeSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation
+                    $exportorgChangeDLList = @()
+                    $StatusLabel.SelectionColor = "Green"
+                    $StatusLabel.SelectedText = "`nOrganisatoriske DL-listedata fra fanen $orgChangeSheetName blev eksporteret til CSV-filen: $dlChangeSaveName"
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Filen $dlChangeSaveName blev oprettet korrekt"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+
+                }
+            }
+        }
+        #### End of Create a CSV file for Org. DL list Change file####
+
+
+        #### Create a CSV file for Lederfunktion Change file 1####
+
+        $exportlederFunk1ChangeList = @()
+        $i = 2
+        $lederFunkDesc = "Manager af "
+
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $orgChangeSheet) {
+                if ($ws.Cells.Item($i, 1).value() -ne $null) {
+                    if ($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -ne $null) {
+                        $lederFunk1Name = $ws.Cells.Item($i, 3).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -ne $null)) {
+                        $lederFunk1Name = $ws.Cells.Item($i, 3).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -eq $null)) {
+                        $lederFunk1Name = $null
+                    }# This section will set the Name value in the CSV file based on if there is value in coloumn "Nyt kortnavn" or coloumn "Nyt Navn" in the LOS ark
+
+                    if ($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -ne $null) {
+                        $lederFunk1NewName = $ws.Cells.Item($i, 11).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -ne $null)) {
+                        $lederFunk1NewName = $ws.Cells.Item($i, 3).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -eq $null)) {
+                        $lederFunk1NewName = $null
+                    }# This section will set the Name value in the CSV file based on if there is value in coloumn "Nyt kortnavn" or coloumn "Nyt Navn" in the LOS ark
+
+                    if ($ws.Cells.Item($i, 1).Value() -ne $null -and $ws.Cells.Item($i, 9).Value() -ne $null) {
+                        $lederFunk1ShortName = $ws.Cells.Item($i, 9).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 1).Value() -ne $null -and $ws.Cells.Item($i, 9).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -ne $null)) {
+                        $lederFunk1ShortName = $ws.Cells.Item($i, 1).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 1).Value() -ne $null -and $ws.Cells.Item($i, 9).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -eq $null)) {
+                        $lederFunk1ShortName = $null
+                    }# This section will set the ResourceID in the CSV file based on if there is value in coloumn "Nyt kortnavn" or coloumn "Nyt Navn" in the LOS ark
+
+                    if ($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -ne $null) {
+                        $lederFunk1ChangeForvaltning = $ws.Cells.Item($i, 10).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -ne $null)) {
+                        $lederFunk1ChangeForvaltning = $ws.Cells.Item($i, 2).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -ne $null)) {
+                        $lederFunk1ChangeForvaltning = $ws.Cells.Item($i, 2).Value()
+                    }
+                    else {
+                        $lederFunk1ChangeForvaltning = $null
+                    }# This section looks for a value in the "Forvaltning" coloumn in the LOS ark and if there is a value in the "Ny Forvaltning" coloumn it will use that, otherwise it will use the value from the "Forvaltning" coloumn
+
+                    $lederFunk1FullName = "Lederfunktion - " + $lederFunk1ChangeForvaltning + ' ' + $lederFunk1Name
+                    $lederfunk1FullDesc = $lederFunkDesc + $lederFunk1ChangeForvaltning + ' ' + $lederFunk1NewName
+
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen værdi i første variabel for Lederfunktion ændre"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+            } #End the foreach loop
+
+            $i++    
+
+            # Create lederFunkChangeObj with the required properties
+            $lederFunk1ChangeeObj = New-Object System.Object
+            $lederFunk1ChangeeObj | Add-Member -Type NoteProperty -Name Name -Value $lederFunk1FullName
+            $lederFunk1ChangeeObj | Add-Member -Type NoteProperty -Name ResourceID -Value $lederFunk1ShortName
+            $lederFunk1ChangeeObj | Add-Member -Type NoteProperty -Name Description -Value $lederfunk1FullDesc
+
+            # Add $lederFunkChangeObj to the export list
+            $exportlederFunk1ChangeList += $lederFunk1ChangeeObj
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($exportlederFunk1ChangeList -eq $null) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke ændres første del af Lederfunktioner. Scriptet fortsætter"
+        }
+        else {
+            # Check if the new file name matches any file in the failedFiles array
+            if ($failedFiles -contains $SavelederogBrugerFunkChangeSheet1) {
+                # File name matches a failed file, skip creation
+                $StatusLabel.SelectionColor = "Red"
+                $StatusLabel.SelectedText = "`nFilen $LederFunkChangeSheet1Name blev ikke oprettet, da den tidligere version af filen ikke kunne slettes."
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $LederFunkChangeSheet1Name blev ikke oprettet da den tidligere version af filen ikke kunne slettes."
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            else {
+                # File name does not match any failed file, proceed with creation    
+                $exportlederFunk1ChangeList = $exportlederFunk1ChangeList  | Where-Object ResourceID -NE $null
+                $exportlederFunk1ChangeList | Export-Csv $SavelederogBrugerFunkChangeSheet1 -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation
+                $exportlederFunk1ChangeList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nFørste del af Lederfunktionsdata fra fanen $orgChangeSheetName blev eksporteret til CSV filen: $LederFunkChangeSheet1Name"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $LederFunkChangeSheet1Name blev oprettet korrekt"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+
+            }
+        }
+
+        #### End of Create a CSV file for Lederfunktion Change file 1####
+
+
+        #### Continue CSV file for Brugeransvarlig Change File 1####
+
+        $exportBrugerAns1ChangeList = @()
+        $BrugerAnsDesc = "Superuser af "
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $orgChangeSheet) {
+                if ($ws.Cells.Item($i, 1).value() -ne $null) {
+                    if ($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -ne $null) {
+                        $brugerAns1Name = $ws.Cells.Item($i, 3).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -ne $null)) {
+                        $brugerAns1Name = $ws.Cells.Item($i, 3).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -eq $null)) {
+                        $brugerAns1Name = $null
+                    }# This section will set the Name value in the CSV file based on if there is value in coloumn "Nyt kortnavn" or coloumn "Nyt Navn" in the LOS ark
+
+                    if ($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -ne $null) {
+                        $brugerAns1NewName = $ws.Cells.Item($i, 11).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -ne $null)) {
+                        $brugerAns1NewName = $ws.Cells.Item($i, 3).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -eq $null)) {
+                        $brugerAns1NewName = $null
+                    }# This section will set the Name value in the CSV file based on if there is value in coloumn "Nyt kortnavn" or coloumn "Nyt Navn" in the LOS ark
+
+                    if ($ws.Cells.Item($i, 1).Value() -ne $null -and $ws.Cells.Item($i, 9).Value() -ne $null) {
+                        $brugerAns1ShortName = $ws.Cells.Item($i, 9).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 1).Value() -ne $null -and $ws.Cells.Item($i, 9).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -ne $null)) {
+                        $brugerAns1ShortName = $ws.Cells.Item($i, 1).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 1).Value() -ne $null -and $ws.Cells.Item($i, 9).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -eq $null)) {
+                        $brugerAns1ShortName = $null
+                    }# This section will set the ResourceID in the CSV file based on if there is value in coloumn "Nyt kortnavn" or coloumn "Nyt Navn" in the LOS ark
+
+                    if ($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -ne $null) {
+                        $brugerAns1ChangeForvaltning = $ws.Cells.Item($i, 10).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -ne $null)) {
+                        $brugerAns1ChangeForvaltning = $ws.Cells.Item($i, 2).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -ne $null)) {
+                        $brugerAns1ChangeForvaltning = $ws.Cells.Item($i, 2).Value()
+                    }
+                    else {
+                        $brugerAns1ChangeForvaltning = $null
+                    }# This section looks for a value in the "Forvaltning" coloumn in the LOS ark and if there is a value in the "Ny Forvaltning" coloumn it will use that, otherwise it will use the value from the "Forvaltning" coloumn
+
+                    $brugerAns1FullName = "Brugeransvarlig - " + $brugerAns1ChangeForvaltning + ' ' + $brugerAns1Name
+                    $brugerAns1FullDesc = $BrugerAnsDesc + $brugerAns1ChangeForvaltning + ' ' + $brugerAns1NewName
+
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen værdi i første variabel for Brugeransvarlig ændre"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+            } #End the foreach loop
+
+            $i++    
+
+            # Create brugerAnsChangeObj with the required properties
+            $brugerAns1ChangeeObj = New-Object System.Object
+            $brugerAns1ChangeeObj | Add-Member -Type NoteProperty -Name Name -Value $brugerAns1FullName
+            $brugerAns1ChangeeObj | Add-Member -Type NoteProperty -Name ResourceID -Value $brugerAns1ShortName
+            $brugerAns1ChangeeObj | Add-Member -Type NoteProperty -Name Description -Value $brugerAns1FullDesc
+
+            # Add $brugerAnsChangeObj to the export list
+            $exportbrugerAns1ChangeList += $brugerAns1ChangeeObj
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($exportbrugerAns1ChangeList -eq $null) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke ændres første del af Brugeransvarlig. Scriptet fortsætter"
+        }
+        else {
+            # Check if the new file name matches any file in the failedFiles array
+            if ($failedFiles -contains $SavelederogBrugerFunkChangeSheet1) {
+                # File name matches a failed file, skip creation
+                $StatusLabel.SelectionColor = "Red"
+                $StatusLabel.SelectedText = "`nFilen $LederFunkChangeSheet1Name har ikke opdateret Brugeransvalig data, da den tidligere version af filen ikke kunne slettes."
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $LederFunkChangeSheet1Name har ikke opdateret Brugeransvalig data, da den tidligere version af filen ikke kunne slettes."
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            else {
+                # File name does not match any failed file, proceed with creation    
+                $exportbrugerAns1ChangeList = $exportbrugerAns1ChangeList  | Where-Object ResourceID -NE $null
+                $exportbrugerAns1ChangeList | Export-Csv $SavelederogBrugerFunkChangeSheet1 -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation -Append
+                $exportbrugerAns1ChangeList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nFørste del af Brugeransvarligdata fra fanen $orgChangeSheetName blev eksporteret til CSV filen: $LederFunkChangeSheet1Name"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $LederFunkChangeSheet1Name blev korrekt opdateret med Brugeransvarlig data"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+
+            }
+        }
+
+        #### End of creating CSV file for Brugeransvarlig Change File 1####
+        
+
+        #### Create a CSV file for Lederfunktion Change File 2####
+        $exportlederFunk2ChangeList = @()
+        $lederFunkDesc = "Manager af "
+        $lederFunkName = "Lederfunktion - "
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $orgChangeSheet) {
+                if ($ws.Cells.Item($i, 1).Value() -ne $null ) {
+                    if ($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -ne $null) {
+                        $lederFunk2Name = $ws.Cells.Item($i, 11).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -ne $null)) {
+                        $lederFunk2Name = $ws.Cells.Item($i, 3).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -eq $null)) {
+                        $lederFunk2Name = $null
+                    }# This section will set the Name value in the CSV file based on if there is value in coloumn "Nyt kortnavn" or coloumn "Nyt Navn" in the LOS ark
+
+                    if ($ws.Cells.Item($i, 1).Value() -ne $null -and $ws.Cells.Item($i, 9).Value() -ne $null) {
+                        $lederFunk2ShortName = $ws.Cells.Item($i, 9).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 1).Value() -ne $null -and $ws.Cells.Item($i, 9).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -ne $null)) {
+                        $lederFunk2ShortName = $ws.Cells.Item($i, 1).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 1).Value() -ne $null -and $ws.Cells.Item($i, 9).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -eq $null)) {
+                        $lederFunk2ShortName = $null
+                    }# This section will set the ResourceID in the CSV file based on if there is value in coloumn "Nyt kortnavn" or coloumn "Nyt Navn" in the LOS ark
+
+                    if ($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -ne $null) {
+                        $lederFunk2ChangeForvaltning = $ws.Cells.Item($i, 10).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -ne $null)) {
+                        $lederFunk2ChangeForvaltning = $ws.Cells.Item($i, 2).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -ne $null)) {
+                        $lederFunk2ChangeForvaltning = $ws.Cells.Item($i, 2).Value()
+                    }
+                    else {
+                        $lederFunk2ChangeForvaltning = $null
+                    }# This section looks for a value in the "Forvaltning" coloumn in the LOS ark and if there is a value in the "Ny Forvaltning" coloumn it will use that, otherwise it will use the value from the "Forvaltning" coloumn
+
+                    $lederFunk2FullName = $lederFunkName + $lederFunk2ChangeForvaltning + ' ' + $lederFunk2Name
+                    $lederFunk2Description = $lederFunkDesc + $lederFunk2ChangeForvaltning + ' ' + $lederFunk2Name
+
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen værdi i anden variabel for Lederfunktion ændre"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+            } #End the foreach loop
+
+            $i++    
+
+            # Create lederFunk2ChangeObj with the required properties
+            $lederFunk2ChangeeObj = New-Object System.Object
+            $lederFunk2ChangeeObj | Add-Member -Type NoteProperty -Name Description -Value $lederFunk2Description
+            $lederFunk2ChangeeObj | Add-Member -Type NoteProperty -Name Name -Value $lederFunk2FullName
+            $lederFunk2ChangeeObj | Add-Member -Type NoteProperty -Name ResourceID -Value $lederFunk2ShortName
+
+            # Add $lederFunk2ChangeObj to the export list
+            $exportlederFunk2ChangeList += $lederFunk2ChangeeObj
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($exportlederFunk2ChangeList -eq $null) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke ændres anden del af Lederfunktioner. Scriptet fortsætter"
+        }
+        else {
+            $exportlederFunk2ChangeList = $exportlederFunk2ChangeList | Where-Object ResourceID -ne $null
+            $exportlederFunk2ChangeList = $exportlederFunk2ChangeList | Select-Object -Property Description, Name
+            # Check if the new file name matches any file in the failedFiles array
+            if ($failedFiles -contains $SavelederogBrugerFunkChangeSheet2) {
+                # File name matches a failed file, skip creation
+                $StatusLabel.SelectionColor = "Red"
+                $StatusLabel.SelectedText = "`nFilen $LederFunkChangeSheet2Name blev ikke oprettet, da den tidligere version af filen ikke kunne slettes."
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $LederFunkChangeSheet2Name blev ikke oprettet da den tidligere version af filen ikke kunne slettes."
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            else {
+                # File name does not match any failed file, proceed with creation    
+                $exportlederFunk2ChangeList | Export-Csv $SavelederogBrugerFunkChangeSheet2 -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation
+                $exportlederFunk2ChangeList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nAnden del af Lederfunktionsdata fra fanen $orgChangeSheetName blev eksporteret til CSV filen: $LederFunkChangeSheet2Name"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $LederFunkChangeSheet2Name blev oprettet korrekt"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+
+        #### End of Create a CSV file for Lederfunktion Change File 2####
+
+
+        #### Continue CSV file for Brugeransvarlig Change File 2####
+        $exportBrugerAns2ChangeList = @()
+        $BrugerAnsDesc = "Superuser af "
+        $BrugerAnsName = "Brugeransvarlig - "
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $orgChangeSheet) {
+                if ($ws.Cells.Item($i, 1).Value() -ne $null ) {
+                    if ($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -ne $null) {
+                        $brugerAns2Name = $ws.Cells.Item($i, 11).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -ne $null)) {
+                        $brugerAns2Name = $ws.Cells.Item($i, 3).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -eq $null)) {
+                        $brugerAns2Name = $null
+                    }# This section will set the Name value in the CSV file based on if there is value in coloumn "Nyt kortnavn" or coloumn "Nyt Navn" in the LOS ark
+
+                    if ($ws.Cells.Item($i, 1).Value() -ne $null -and $ws.Cells.Item($i, 9).Value() -ne $null) {
+                        $brugerAns2ShortName = $ws.Cells.Item($i, 9).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 1).Value() -ne $null -and $ws.Cells.Item($i, 9).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -ne $null)) {
+                        $brugerAns2ShortName = $ws.Cells.Item($i, 1).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 1).Value() -ne $null -and $ws.Cells.Item($i, 9).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -eq $null)) {
+                        $brugerAns2ShortName = $null
+                    }# This section will set the ResourceID in the CSV file based on if there is value in coloumn "Nyt kortnavn" or coloumn "Nyt Navn" in the LOS ark
+
+                    if ($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -ne $null) {
+                        $brugerAns2ChangeForvaltning = $ws.Cells.Item($i, 10).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -ne $null)) {
+                        $brugerAns2ChangeForvaltning = $ws.Cells.Item($i, 2).Value()
+                    }
+                    elseif (($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -eq $null -and $ws.Cells.Item($i, 9).Value() -ne $null)) {
+                        $brugerAns2ChangeForvaltning = $ws.Cells.Item($i, 2).Value()
+                    }
+                    else {
+                        $brugerAns2ChangeForvaltning = $null
+                    }# This section looks for a value in the "Forvaltning" coloumn in the LOS ark and if there is a value in the "Ny Forvaltning" coloumn it will use that, otherwise it will use the value from the "Forvaltning" coloumn
+
+                    $brugerAns2FullName = $BrugerAnsName + $brugerAns2ChangeForvaltning + ' ' + $brugerAns2Name
+                    $brugerAns2Description = $BrugerAnsDesc + $brugerAns2ChangeForvaltning + ' ' + $brugerAns2Name
+
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen v�rdi i anden variabel for Brugeransvarlig �ndre"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+            } #End the foreach loop
+
+            $i++    
+
+            # Create brugerAnsChangeObj with the required properties
+            $brugerAns2ChangeeObj = New-Object System.Object
+            $brugerAns2ChangeeObj | Add-Member -Type NoteProperty -Name Description -Value $brugerAns2Description
+            $brugerAns2ChangeeObj | Add-Member -Type NoteProperty -Name Name -Value $brugerAns2FullName
+            $brugerAns2ChangeeObj | Add-Member -Type NoteProperty -Name ResourceID -Value $brugerAns2ShortName
+
+            # Add $brugerAnsChangeObj to the export list
+            $exportbrugerAns2ChangeList += $brugerAns2ChangeeObj
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($exportbrugerAns2ChangeList -eq $null) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke ændres anden del af Brugeransvarlig. Scriptet fortsætter"
+        }
+        else {
+            # Check if the new file name matches any file in the failedFiles array
+            if ($failedFiles -contains $SavelederogBrugerFunkChangeSheet2) {
+                # File name matches a failed file, skip creation
+                $StatusLabel.SelectionColor = "Red"
+                $StatusLabel.SelectedText = "`nFilen $LederFunkChangeSheet2Name har ikke opdateret Brugeransvalig data, da den tidligere version af filen ikke kunne slettes."
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $LederFunkChangeSheet2Name har ikke opdateret Brugeransvalig data, da den tidligere version af filen ikke kunne slettes."
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            else {
+                # File name does not match any failed file, proceed with creation    
+                $exportbrugerAns2ChangeList = $exportbrugerAns2ChangeList | Where-Object ResourceID -ne $null
+                $exportbrugerAns2ChangeList = $exportbrugerAns2ChangeList | Select-Object -Property Description, Name
+                $exportbrugerAns2ChangeList | Export-Csv $SavelederogBrugerFunkChangeSheet2 -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation -Append
+                $exportbrugerAns2ChangeList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nAnden del af Brugeransvarligdata fra fanen $orgChangeSheetName blev eksporteret og tilføjet til CSV filen: $LederFunkChangeSheet2Name"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $LederFunkChangeSheet2Name blev korrekt opdateret med Brugeransvarlig data"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+
+        #### End of Brugeransvarlig Change File 2####
+        
+        #### Change Dynamic Template folders ####
+        # Denne sektion skal skrives om s� der kun tages h�jde for org enheder, der faktisk skifter navn og ikke alle entries i Org �ndre fanen. Omskrivning p�begyndt den 02/06-2023
+        $exportdynChangeList = @()
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $orgChangeSheet) {
+                if ($ws.Cells.Item($i, 1).Value() -ne $null ) {
+                    if ($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -ne $null -or $ws.Cells.Item($i, 11).Value() -ne $null) {
+                        $dynChangeOrgForvaltningShort = $ws.Cells.Item($i, 2).Value()
+                    }
+                    else {
+                        $dynChangeOrgForvaltningShort = $null
+                    } # This section looks for a value in the "Forvaltning" coloumn in the LOS ark. If there is a value in the "Ny Forvaltning" or if there is a value in the "Nyt Navn" coloumn it will use the value from the "Forvaltning" coloumn
+
+                    if ($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -ne $null -or $ws.Cells.Item($i, 11).Value() -ne $null) {
+                        $dynChangeOrgName = $ws.Cells.Item($i, 3).Value()
+                    }
+                    else {
+                        $dynChangeOrgName = $null
+                    } # This section looks for a value in the "Navn" coloumn in the LOS ark. If there is a value in the "Ny Forvaltning" or if there is a value in the "Nyt Navn" coloumn it will use the value from the "Navn" coloumn
+
+                    if ($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -ne $null) {
+                        $dynChangeNewOrgForvaltningShort = $ws.Cells.Item($i, 10).Value()
+                    } 
+                    elseif ($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -ne $null) {
+                        $dynChangeNewOrgForvaltningShort = $ws.Cells.Item($i, 2).Value()
+                    }
+                    else {
+                        $dynChangeNewOrgForvaltningShort = $null
+                    } # This section looks for a value in the "Forvaltning" coloumn in the LOS ark and if there is a value in the "Ny Forvaltning" coloumn it will use that, otherwise it will use the value from the "Forvaltning" coloumn if there is a value in the "Nyt Navn" coloumn
+
+                    if ($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.cells.Item($i, 11).Value() -ne $null) {
+                        $dynChangeNewOrgName = $ws.Cells.Item($i, 11).Value()
+                    }
+                    elseif ($ws.Cells.Item($i, 3).Value() -ne $null -and $ws.Cells.Item($i, 11).Value() -eq $null -and $ws.Cells.Item($i, 10).Value() -ne $null) {
+                        $dynChangeNewOrgName = $ws.Cells.Item($i, 3).Value()
+                    }
+                    else {
+                        $dynChangeNewOrgName = $null
+                    } # This section looks for a value in the "Navn" coloumn in the LOS ark and if there is a value in the "Nyt Navn" coloumn it will use that, otherwise it will use the value from the "Navn" coloumn if there is a value in the "Ny Forvaltning" coloumn
+
+                    if ($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -ne $null) {
+                        $dynChangeNewOrgForvaltning = $TranslateArr | Where-Object { $_.ShortName -eq $dynChangeNewOrgForvaltningShort } | Select-Object -ExpandProperty ForvaltningsName
+                    } 
+                    elseif ($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -eq $null -and $ws.Cells.Item($i, 11).Value() -ne $null) {
+                        $dynChangeNewOrgForvaltning = $TranslateArr | Where-Object { $_.ShortName -eq $dynChangeOrgForvaltningShort } | Select-Object -ExpandProperty ForvaltningsName
+                    }
+                    else {
+                        $dynChangeNewOrgForvaltningShort = $null
+                    } # This section looks for a value in the "Forvaltning" coloumn in the LOS ark and if there is a value in the "Ny Forvaltning" coloumn it will set "Ny forvaltning" in the CSV file, otherwise it will use the value from the "Forvaltning" coloumn if there is a value in the "Nyt Navn" coloumn
+
+                    # Define what Org is selected and translate short name to full name
+                    $dynChangeNewOrgunit | ForEach-Object {
+                        if ($_ -ne $null) {
+                            $dynChangeNewOrgForvaltning = $TranslateArr | Where-Object { $_.ShortName -eq $dynChangeNewOrgForvaltningShort } | Select-Object -ExpandProperty ForvaltningsName
+                        }
+                    }
+                    
+                    $dynChangeOrgunit = $dynChangeOrgForvaltningShort + ' ' + $dynChangeOrgName
+                    $dynChangeNewOrgunit = $dynChangeNewOrgForvaltningShort + ' ' + $dynChangeNewOrgName
+
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen værdi i variablen for Dyn Temp ændre"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+            } #End the foreach loop
+
+            $i++    
+
+            # Create dynTempCreateObj with the required properties
+            $dynTempChangeObj = New-Object System.Object
+            $dynTempChangeObj | Add-Member -Type NoteProperty -Name Organisationsnavn -Value $dynChangeOrgunit
+            $dynTempChangeObj | Add-Member -Type NoteProperty -Name 'Nyt Organisationsnavn' -Value $dynChangeNewOrgunit
+            $dynTempChangeObj | Add-Member -Type NoteProperty -Name 'Nyt Afdelingsnavn' -Value $dynChangeNewOrgName
+            $dynTempChangeObj | Add-Member -Type NoteProperty -Name 'Nyt Forvaltningsnavn' -Value $dynChangeNewOrgForvaltning
+
+            # Add $dynTempCreateObj to the export list
+            $exportdynChangeList += $dynTempChangeObj
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($exportdynChangeList -eq $null) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke ændres Dynamic Template foldere. Scriptet fortsætter"
+        }
+        else {
+            # Check if the new file name matches any file in the failedFiles array
+            if ($failedFiles -contains $SaveDynTempChangeSheet) {
+                # File name matches a failed file, skip creation
+                $StatusLabel.SelectionColor = "Red"
+                $StatusLabel.SelectedText = "`nFilen $DynTempChangeSheetName blev ikke oprettet, da den tidligere version af filen ikke kunne slettes."
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $DynTempChangeSheetName blev ikke oprettet da den tidligere version af filen ikke kunne slettes."
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            else {
+                # File name does not match any failed file, proceed with creation    
+                $exportdynChangeList | Export-Csv $SaveDynTempChangeSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation
+                $exportdynChangeList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nDynamic Template data fra fanen $orgChangeSheetName blev eksporteret til CSV filen: $DynTempChangeSheetName"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $LederFunkChangeSheet2Name blev oprettet korrekt"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }    
+
+        #### End of Change Dynamic Template folders ####
+
+
+        #### Create a CSV file for Drive Change ####
+
+        $exportDriveChangeList = @()
+        $driveChangeSheetName = $driveChangeSheet.name
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $driveChangeSheet) {
+                if ($ws.Cells.Item($i, 1) -ne $null ) {
+                    $driveChangeShortName = $ws.Cells.Item($i, 1).Value()
+                    $driveChangeFullName = $ws.Cells.Item($i, 2).Value()
+                    $driveChangeShortNameNew = $ws.Cells.Item($i, 3).Value()
+                    $driveChangeFullNameNew = $ws.Cells.Item($i, 4).Value()
+                    $driveChangeOrg = $ws.Cells.Item($i, 5).Value()
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen værdi i variablen for drev ændre"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+            } #End the foreach loop
+
+            $i++    
+
+            # Create driveChangeObj with the required properties
+            $driveChangeObj = New-Object System.Object
+            $driveChangeObj | Add-Member -Type NoteProperty -Name Forvaltning -Value $driveChangeShortName
+            $driveChangeObj | Add-Member -Type NoteProperty -Name Mappenavn -Value $driveChangeFullName
+            $driveChangeObj | Add-Member -Type NoteProperty -Name 'Ny Forvaltning' -Value $driveChangeShortNameNew
+            $driveChangeObj | Add-Member -Type NoteProperty -Name 'Nyt Mappenavn' -Value $driveChangeFullNameNew
+            $driveChangeObj | Add-Member -Type NoteProperty -Name Organisationsenhed -Value $driveChangeOrg
+
+            # Add $driveChangeObj to the export list
+            $exportDriveChangeList += $driveChangeObj
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($exportDriveChangeList -eq $null) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke ændres G-drev. Scriptet fortsætter"
+        }
+        else {
+            # Check if the new file name matches any file in the failedFiles array
+            if ($failedFiles -contains $SaveRenameOrgFoldersSheet) {
+                # File name matches a failed file, skip creation
+                $StatusLabel.SelectionColor = "Red"
+                $StatusLabel.SelectedText = "`nFilen $RenameOrgFoldersName blev ikke oprettet, da den tidligere version af filen ikke kunne slettes."
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $RenameOrgFoldersName blev ikke oprettet da den tidligere version af filen ikke kunne slettes."
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            else {
+                # File name does not match any failed file, proceed with creation    
+                $exportDriveChangeList | Export-Csv $SaveRenameOrgFoldersSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation
+                $exportDriveChangeList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nG-drev data fra fanen $driveChangeSheetName blev eksporteret til CSV filen: $RenameOrgFoldersName"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $RenameOrgFoldersName blev oprettet korrekt"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+
+        #### End of Create a CSV file for Drive Change ####
+
+        #### Create a CSV file for Role owner change ####
+
+        $exportRoleOwnerDlList = @()
+        $dlChangeSheetName = $dlChangeSheet.name
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            $roleOwnerDlID = $dlChangeSheet.Cells.Item($i, 1).Value()
+            $NewRoleOwner = $dlChangeSheet.Cells.Item($i, 8).Value()
+
+            if ($roleOwnerDlID -ne $null -and $NewRoleOwner -ne $null) {
+                # Split the content by comma
+                $newRoleOwnerValues = $NewRoleOwner -split ','
+
+                foreach ($value in $newRoleOwnerValues) {
+                    # Extract the content inside hard brackets
+                    $manualOwnerValue = $value -replace '^[^\[]*\[([^\]]*)\].*$', '$1'
+
+                    # Create roleOwnerDlObj with the required properties
+                    $roleOwnerDlObj = New-Object PSObject -Property @{
+                        Name            = $roleOwnerDlID
+                        'Manual owners' = $manualOwnerValue.Trim()
+                    }
+
+                    # Add $roleOwnerDlObj to the export list
+                    $exportRoleOwnerDlList += $roleOwnerDlObj
+                }
+            }
+            elseif ($roleOwnerDlID -eq $null) {
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Der var ingen værdi i variablen for DL rolle ejer ændre"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+
+            $i++
+        } While ($dlChangeSheet.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($exportRoleOwnerDlList.Count -eq 0) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke laves ændringer af DL rolle ejer. Scriptet fortsætter"
+        }
+        else {
+            # Check if the new file name matches any file in the failedFiles array
+            if ($failedFiles -contains $SaveRoleOwnerSheet) {
+                # File name matches a failed file, skip creation
+                $StatusLabel.SelectionColor = "Red"
+                $StatusLabel.SelectedText = "`nFilen $roleOwnerSheetName blev ikke oprettet, da den tidligere version af filen ikke kunne slettes."
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $roleOwnerSheetName blev ikke oprettet da den tidligere version af filen ikke kunne slettes."
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            else {
+                # File name does not match any failed file, proceed with creation    
+                $exportRoleOwnerDlList | Select-Object Name, 'Manual owners' | Export-Csv $SaveRoleOwnerSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation -Force
+                $exportRoleOwnerDlList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nDL rolle ejer data fra fanen $dlChangeSheetName blev eksporteret til CSV filen: $roleOwnerSheetName"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $roleOwnerSheetName blev oprettet korrekt"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+
+        #### End of Create a CSV file for Role owner change ####
+
+
+        #### Continue Role owner change in Calender Sheet ####
+
+        $exportRoleOwnerCalList = @()
+        $calenderChangeSheetName = $calenderChangeSheet.name
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            $roleOwnerCalID = $calenderChangeSheet.Cells.Item($i, 1).Value()
+            $NewCalRoleOwner = $calenderChangeSheet.Cells.Item($i, 5).Value()
+
+            if ($roleOwnerCalID -ne $null -and $NewCalRoleOwner -ne $null) {
+                # Split the content by comma
+                $newRoleOwnerCalValues = $NewCalRoleOwner -split ','
+
+                foreach ($value in $newRoleOwnerCalValues) {
+                    # Extract the content inside hard brackets
+                    $manualOwnerCalValue = $value -replace '^[^\[]*\[([^\]]*)\].*$', '$1'
+
+                    # Create roleOwnerDlObj with the required properties
+                    $roleOwnerCalObj = New-Object PSObject -Property @{
+                        Name            = $roleOwnerCalID
+                        'Manual owners' = $manualOwnerCalValue.Trim()
+                    }
+
+                    # Add $roleOwnerDlObj to the export list
+                    $exportRoleOwnerCalList += $roleOwnerCalObj
+                }
+            }
+            elseif ($roleOwnerCalID -eq $null) {
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Der var ingen værdi i variablen for Kalender rolle ejer ændre"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+
+            $i++    
+
+        } While ($calenderChangeSheet.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($exportRoleOwnerCalList.Count -eq 0) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke laves ændringer af Kalender rolle ejer. Scriptet fortsætter"
+        }
+        else {
+            # Check if the new file name matches any file in the failedFiles array
+            if ($failedFiles -contains $SaveRoleOwnerSheet) {
+                # File name matches a failed file, skip creation
+                $StatusLabel.SelectionColor = "Red"
+                $StatusLabel.SelectedText = "`nFilen $roleOwnerSheetName blev ikke opdateret med Kalender rolle ejer data, da den tidligere version af filen ikke kunne slettes."
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $roleOwnerSheetName blev ikke opdateret med Kalender rolle ejer data, da den tidligere version af filen ikke kunne slettes."
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            else {
+                # File name does not match any failed file, proceed with creation    
+                $exportRoleOwnerCalList | Select-Object Name, 'Manual owners' | Export-Csv $SaveRoleOwnerSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation -Append
+                $exportRoleOwnerCalList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nKalender rolle ejer data fra fanen $calenderChangeSheetName blev tilføjet til CSV filen: $roleOwnerSheetName"
+                $logEntry = "[$timestamp] Filen $roleOwnerSheetName blev opdateret korrekt med Kalender rolle ejer data"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+            
+        #### End of Continue Role owner change in Calender Sheet ####
+
+
+        #### Continue Role owner change in Mailbox Sheet ####
+
+        $exportRoleOwnerMailList = @()
+        $mailChangeSheetName = $mailChangeSheet.name
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            $roleOwnerMailID = $mailChangeSheet.Cells.Item($i, 1).Value()
+            $NewMailRoleOwner = $mailChangeSheet.Cells.Item($i, 8).Value()
+
+            if ($roleOwnerMailID -ne $null -and $NewMailRoleOwner -ne $null) {
+                # Split the content by comma
+                $newRoleOwnerMailValues = $NewMailRoleOwner -split ','
+
+                foreach ($value in $newRoleOwnerMailValues) {
+                    # Extract the content inside hard brackets
+                    $manualOwnerMailValue = $value -replace '^[^\[]*\[([^\]]*)\].*$', '$1'
+
+                    # Create roleOwnerDlObj with the required properties
+                    $roleOwnerMailObj = New-Object PSObject -Property @{
+                        Name            = $roleOwnerMailID
+                        'Manual owners' = $manualOwnerMailValue.Trim()
+                    }
+
+                    # Add $roleOwnerDlObj to the export list
+                    $exportRoleOwnerMailList += $roleOwnerMailObj
+                }
+            }
+            elseif ($roleOwnerMailID -eq $null) {
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Der var ingen værdi i variablen for Mailboks rolle ejer ændre"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+
+            $i++    
+
+        } While ($mailChangeSheet.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($exportRoleOwnerMailList.Count -eq 0) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke laves ændringer af Mailboks rolle ejer. Scriptet fortsætter"
+        }
+        else {
+            # Check if the new file name matches any file in the failedFiles array
+            if ($failedFiles -contains $SaveRoleOwnerSheet) {
+                # File name matches a failed file, skip creation
+                $StatusLabel.SelectionColor = "Red"
+                $StatusLabel.SelectedText = "`nFilen $roleOwnerSheetName blev ikke opdateret med Mailboks rolle ejer data, da den tidligere version af filen ikke kunne slettes."
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $roleOwnerSheetName blev ikke opdateret med Mailboks rolle ejer data, da den tidligere version af filen ikke kunne slettes."
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            else {
+                # File name does not match any failed file, proceed with creation    
+                $exportRoleOwnerMailList | Select-Object Name, 'Manual owners' | Export-Csv $SaveRoleOwnerSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation -Append
+                $exportRoleOwnerMailList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nMailboks rolle ejer data fra fanen $mailChangeSheetName blev eksporteret til CSV filen: $roleOwnerSheetName"
+                $logEntry = "[$timestamp] Filen $roleOwnerSheetName blev opdateret korrekt med Mailboks rolle ejer data"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+            
+        #### End of Continue Role owner change in Mailbox Sheet ####
+
+        #### Create a CSV file for DL Change ####
+
+        $exportDLChangeList = @()
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $dlChangeSheet) {
+                if ($ws.Cells.Item($i, 1).value() -ne $null ) {
+                    if ($ws.Cells.Item($i, 1).value() -ne $null -and $ws.Cells.Item($i, 5).value() -ne $null) {
+                        $dlChangeName = $ws.Cells.Item($i, 1).value()
+                    }
+                    elseif ($ws.Cells.Item($i, 1).value() -ne $null -and $ws.Cells.Item($i, 5).value() -eq $null) {
+                        $dlChangeName = ""
+                    }
+                    else {
+                        $dlChangeName = $null
+                    }
+                    if ($ws.Cells.Item($i, 5).value() -ne $null -and $ws.Cells.Item($i, 1).value() -ne $null) {
+                        $dlChangeNewName = $ws.Cells.Item($i, 5).value()
+                    }
+                    elseif ($ws.Cells.Item($i, 1).value() -ne $null -and $ws.Cells.Item($i, 5).value() -eq $null) {
+                        $dlChangeNewName = ""
+                    }
+                    else {
+                        $dlChangeNewName = $null
+                    }
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen værdi i variablen for DL ændre"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+            } #End the foreach loop
+
+            $i++    
+
+            # Create dlChangeObj with the required properties
+            $dlChangeObj = New-Object System.Object
+            $dlChangeObj | Add-Member -Type NoteProperty -Name Navn -Value $dlChangeName
+            $dlChangeObj | Add-Member -Type NoteProperty -Name 'Nyt navn' -Value $dlChangeNewName
+
+            # Add $dlChangeObj to the export list
+            $exportDLChangeList += $dlChangeObj
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($dlChangeElements -eq $null) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke ændres DL lister. Scriptet fortsætter"
+        }
+        else {
+            # Check if the new file name matches any file in the failedFiles array
+            if ($failedFiles -contains $SaveDLChangeSheet) {
+                # File name matches a failed file, skip creation
+                $StatusLabel.SelectionColor = "Red"
+                $StatusLabel.SelectedText = "`nFilen $dlChangeSaveName blev ikke oprettet, da den tidligere version af filen ikke kunne slettes."
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $dlChangeSaveName blev ikke oprettet da den tidligere version af filen ikke kunne slettes."
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            else {
+                # File name does not match any failed file, proceed with creation    
+                $exportDLChangeList.Where({ $_.Navn -ne "" }) | Export-Csv $SaveDLChangeSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation -Append
+                $exportRoleOwnerMailList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nDL ændre data fra fanen $dlChangeSheetName blev eksporteret til CSV filen: $dlChangeSaveName"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $dlChangeSaveName blev oprettet korrekt"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+        
+        #### End of Continue Role owner change in Mailbox Sheet ####
+
+        # Call the LimitFormSizeAndPosition function to ensure the form stays within screen boundaries
+        LimitFormSizeAndPosition
+
+        # Show the CSV exported dialog          
+        [System.Windows.Forms.MessageBox]::Show("Eksport til CSV fuldført!")
+        
+        # Show Open Folder button and Add Click event to it
+        $OpenFolderBtn.Visible = $true
+        $OpenFolderBtn.Add_Click({
+                Invoke-Item $global:CSVSavePath
+            })
+
+        $OpenFolderBtn.Enabled = $true
+        $CancelButton.Text = "Luk"
+
+        $logEntry = "`r`n`r`n-----Slut på oprettelse af CSV filer for ændring af data-----"
+        # Write the success message to the log file
+        Add-Content -Path $logfile -Value $logEntry
+        
+        #Close Excel after creating CSV files
+        try {
+            if ($Excel -ne $null -and $global:Workbook -ne $null) {
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
+                $Workbook.Close($false)
+                $Excel.Quit()
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Workbook)
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Excel)
+                $global:Workbook = $null
+                $global:Excel = $null
+            }
+        }
+        catch {
+            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+            $logEntry = "[$timestamp] Fejl opstod under lukning af Workbook og afslutning af Excel efter oprettelse af CSV filer: $_"
+            Add-Content -Path $logfile -Value $logEntry
+        }
+        finally {
+            if ($global:Workbook -ne $null) {
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Workbook)
+                $global:Workbook = $null
+            }
+            if ($global:Excel -ne $null) {
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Excel)
+                $global:Excel = $null
+            }
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+        }
+
+
+    })
+
+# Adds buttons to the form
+$Form.Controls.Add($BrowseButton)
+$Form.Controls.Add($ExportButton)
+$Form.Controls.Add($OpenFolderBtn)
+$Form.Controls.Add($CancelBtn)
+
+# Releases Excel upon closing the script
+$Form.Add_FormClosing({
+        try {
+            if ($Excel -ne $null -and $global:Workbook -ne $null) {
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
+                $Workbook.Close($false)
+                $Excel.Quit()                
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Workbook)
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Excel)
+                $global:Workbook = $null
+                $global:Excel = $null
+            }
+        }
+        catch {
+            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+            $logEntry = "[$timestamp] Fejl opstod under lukning af Workbook og afslutning af Excel i afslutning af scriptet: $_"
+            Add-Content -Path $logfile -Value $logEntry
+        }
+        finally {
+            if ($global:Workbook -ne $null) {
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Workbook)
+                $global:Workbook = $null
+            }
+            if ($global:Excel -ne $null) {
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($global:Excel)
+                $global:Excel = $null
+            }
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+        }
+    })
+
+# Show the form
+$Form.ShowDialog() | Out-Null
