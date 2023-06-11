@@ -4,6 +4,7 @@ A powershell code that creates a Windows Form to get data from a LOS excel file 
 Dette PowerShell-script, LOSGUI.ps1, er designet til at automatisere konverteringsprocessen af data fra en LOS-fil (en Excel fil der benyttes til håndtering af organisationsændringer) til CSV (Comma-Separated Values) filer. Scriptet leverer en intuitiv og brugervenlig grafisk brugerflade (GUI), der gør det let for brugere uden erfaring med PowerShell at interagere med og drage fordel af konverteringsfunktionaliteten.
 
 Når scriptet startes, åbnes en brugervenligt grafisk brugerflade (GUI), der præsenterer forskellige elementer og interaktive komponenter til brugeren. En væsentlig del af GUI'en er "Vælg LOS ark" knappen, der giver brugeren mulighed for at vælge en LOS-fil fra deres lokale filsystem. Når brugeren klikker på " Vælg LOS ark " knappen, åbnes en dialogboks, hvor de kan navigere til og vælge den ønskede LOS-fil. Filens placering vises derefter tydeligt i et tekstfelt på GUI'en, hvilket giver brugeren visuel bekræftelse på, at den korrekte fil er valgt.
+
 Ved valg af LOS-filen bliver destinationen og navnet på de/den CSV-fil, der skal genereres som resultat af konverteringen, automatisk bestemt. Dette gøres ved at bruge værdier fra de relevante faner i LOS arket. 
 Når LOS-filen er indlæst, kan brugeren trykke på "Eksporter CSV" knappen for at starte konverteringsprocessen. Dette udløser en sekvens af PowerShell-kode, der styrer selve konverteringen og inkluderer også robust fejlhåndtering for at sikre en pålidelig udførelse af scriptet.
 
