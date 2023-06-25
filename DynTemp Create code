@@ -1,0 +1,507 @@
+        # Add click event to Create Dynamic Template button
+        $CreateDynButton.Add_Click({
+                Clear-StatusLabel
+                $StatusLabel.SelectionFont = New-Object System.Drawing.Font($Font, [System.Drawing.FontStyle]::Bold)
+                $StatusLabel.SelectedText = "Status:`n"
+                $StatusLabel.SelectedText = "LOS ark indlæses`r`n"
+                $StatusLabel.SelectedText = "Arket $global:FolderName er indlæst og klar til yderlig håndtering`r`n"
+                $StatusLabel.SelectedText = "Dynamic Template data fra arket $global:FolderName bliver nu behandlet:`r`n"       
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.AppendText("`n`nOpretter nye Dynamic Template mapper")
+                $logEntry = "`n`n-----Start på oprettelse af Dynamic Template mapper og filer-----"
+                Add-Content -Path $logfile -Value $logEntry
+                
+                # Importer CSV-filen for DynCreate
+                $dynCreateData = Import-Csv $SaveDynTempCreateSheet
+                $dynTempArray = Get-ChildItem -Path $dynTempDir -Directory
+
+                # Gennemløb hvert element i CSV-dataene
+                foreach ($row in $dynCreateData) {
+                    # Hent mappenavne fra CSV-rækken
+                    $folderName = $row.Organisationsnavn
+
+                    try {
+                        # Kontroller om der eksisterer en mappe med det samme navn
+                        $folder = $dynTempArray | Where-Object { $_.Name -eq $folderName }
+                        if ($folder) {
+                            $StatusLabel.SelectionColor = "Orange"
+                            $StatusLabel.AppendText("`n`nDynamic Template mappen $folderName findes allerede og bliver ikke opdateret")
+                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                            $logEntry = "[$timestamp] Dynamic Template folderen $folderName findes allerede"
+                            Add-Content -Path $logfile -Value $logEntry                    
+                        }
+                        else {
+                            try {
+                                # Generér den nye sti og navn for mappen
+                                $newFolderPath = Join-Path $dynTempDir $folderName
+
+                                # Opret den nye mappe
+                                New-Item -Path $newFolderPath -ItemType Directory | Out-Null
+                                $StatusLabel.SelectionColor = "Green"
+                                $StatusLabel.AppendText("`n`nFølgende nye Dynamic Template mappe er oprettet: ")
+                                $StatusLabel.SelectionColor = "Black"
+                                $StatusLabel.AppendText($folderName)
+
+                                # Log oprettelsen af den nye mappe
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny Dynamic Template mappe er oprettet: $folderName"
+                                Add-Content -Path $logfile -Value $logEntry
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen: $folderName")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse: $($_.Exception.Message)"
+                                Add-Content -Path $logfile -Value $logEntry
+                            }
+                            
+                            try {
+                                # Opret mappen "Afdelingsnavn" inde i den nye mappe
+                                $afdNavnFolderPath = Join-Path $newFolderPath "Afdelingsnavn"
+                                New-Item -Path $afdNavnFolderPath -ItemType Directory | Out-Null
+                                $StatusLabel.SelectionColor = "Green"
+                                $StatusLabel.AppendText("`nMappen 'Afdelingsnavn' er oprettet i Dynamic Template mappen: $folderName ")
+                            
+                                # Log oprettelsen af mappen "Afdelingsnavn"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Afdelingsnavn"
+                                Add-Content -Path $logfile -Value $logEntry
+                            
+                                try {
+                                    # Opdater eller opret tekstfilen Afdelingsnavn.txt med UTF8-BOM kodning
+                                    $afdNavnFilePath = Join-Path $afdNavnFolderPath "Afdelingsnavn.txt"
+                                    $newAfdNavn = $row.Afdelingsnavn
+                                    $currentAfdNavn = ""
+                                    if (Test-Path $afdNavnFilePath) {
+                                        $currentAfdNavn = Get-Content -Path $afdNavnFilePath
+                                    }
+                            
+                                    if ($newAfdNavn -ne $currentAfdNavn) {
+                                        $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                        [System.IO.File]::WriteAllText($afdNavnFilePath, $newAfdNavn, $utf8BomEncoder)
+                                        $StatusLabel.SelectionColor = "Green"
+                                        $StatusLabel.AppendText("`nTekstfilen Afdelingsnavn.txt er blevet oprettet med værdien: ")
+                                        $StatusLabel.SelectionColor = "Black"
+                                        $StatusLabel.AppendText($newAfdNavn)
+                                    }
+                                }
+                                catch {
+                                    $StatusLabel.SelectionColor = "Orange"
+                                    $StatusLabel.AppendText("`nDer opstod en fejl under opdateringen af tekstfilen Afdelingsnavn.")
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "`n[$timestamp] Fejlmeddelelse (opdatering af tekstfil): $($_.Exception.Message)"
+                                    Add-Content -Path $logfile -Value $logEntry
+                                }
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen Afdelingsnavn.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe): $($_.Exception.Message)"
+                                Add-Content -Path $logfile -Value $logEntry
+                            }
+                            
+                            try {
+                                # Opret mappen "Bundgrafik" inde i den nye mappe
+                                $bundgfxFolderPath = Join-Path $newFolderPath "Bundgrafik"
+                                New-Item -Path $bundgfxFolderPath -ItemType Directory | Out-Null
+                            
+                                # Log oprettelsen af mappen "Bundgrafik"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Bundgrafik"
+                                Add-Content -Path $logfile -Value $logEntry
+                            
+                                $StatusLabel.SelectionColor = "Green"
+                                $StatusLabel.AppendText("`nMappen 'Bundgrafik' er oprettet i Dynamic Template mappen: $folderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Bundgrafik'.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - Bundgrafik): $($_.Exception.Message)"
+                                Add-Content -Path $logfile -Value $logEntry
+                            }
+                            
+                            try {
+                                # Opret mappen "EAN" inde i den nye mappe
+                                $eanNavnFolderPath = Join-Path $newFolderPath "EAN"
+                                New-Item -Path $eanNavnFolderPath -ItemType Directory | Out-Null
+                                $StatusLabel.SelectionColor = "Green"
+                                $StatusLabel.AppendText("`nMappen 'EAN' er oprettet i Dynamic Template mappen: $folderName ")
+                            
+                                # Log oprettelsen af mappen "EAN"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: EAN"
+                                Add-Content -Path $logfile -Value $logEntry
+                            
+                                try {
+                                    # Opdater eller opret tekstfilen EAN.txt med UTF8-BOM kodning
+                                    $eanNavnFilePath = Join-Path $eanNavnFolderPath "EAN.txt"
+                                    $currentEAN = ""
+                            
+                                    if (!(Test-Path $eanNavnFilePath)) {
+                                        $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                        [System.IO.File]::WriteAllText($eanNavnFilePath, $currentEAN, $utf8BomEncoder)
+                                        #$StatusLabel.SelectionColor = "Green"
+                                        #$StatusLabel.AppendText("`nTekstfilen EAN.txt er blevet oprettet")
+                            
+                                        # Log oprettelsen af tekstfilen
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Tekstfilen EAN.txt er blevet oprettet"
+                                        Add-Content -Path $logfile -Value $logEntry
+                                    }
+                                }
+                                catch {
+                                    $StatusLabel.SelectionColor = "Orange"
+                                    $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af tekstfilen EAN.txt")
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af tekstfil) EAN: $($_.Exception.Message)"
+                                    Add-Content -Path $logfile -Value $logEntry
+                                }
+                            
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen EAN.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe): $($_.Exception.Message)"
+                                Add-Content -Path $logfile -Value $logEntry
+                            }
+                                                        
+                            try {
+                                # Opret mappen "Email" inde i den nye mappe
+                                $mailNavnFolderPath = Join-Path $newFolderPath "Email"
+                                New-Item -Path $mailNavnFolderPath -ItemType Directory | Out-Null
+                                # Succesfuld oprettelse af mappen "Email"
+                                $StatusLabel.SelectionColor = "Green"
+                                $StatusLabel.AppendText("`nMappen 'Email' er oprettet i Dynamic Template mappen: $folderName ")
+                            
+                                # Log oprettelsen af mappen "Email"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Email"
+                                Add-Content -Path $logfile -Value $logEntry
+                            
+                                try {
+                                    # Opret mappen "Kampagne" inde i "Email" mappen
+                                    $kampagneNavnFolderPath = Join-Path $mailNavnFolderPath "Kampagne"
+                                    New-Item -Path $kampagneNavnFolderPath -ItemType Directory | Out-Null
+                            
+                                    try {
+                                        # Opret mappen "OLD" inde i "Kampagne" mappen der ligger i "Email" mappen
+                                        $kampagneOldFolderPath = Join-Path $kampagneNavnFolderPath "OLD"
+                                        New-Item -Path $kampagneOldFolderPath -ItemType Directory | Out-Null
+                            
+                                        try {
+                                            # Opdater eller opret tekstfilen Kampagne.txt med UTF8-BOM kodning i undermappen "Kampagne"
+                                            $kampagneNavnSubFolderPath = Join-Path $kampagneNavnFolderPath "Kampagne.txt"
+                                            $currentkampagne = ""
+                            
+                                            if (!(Test-Path $kampagneNavnSubFolderPath)) {
+                                                $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                                [System.IO.File]::WriteAllText($kampagneNavnSubFolderPath, $currentkampagne, $utf8BomEncoder)
+                                                #$StatusLabel.SelectionColor = "Green"
+                                                #$StatusLabel.AppendText("`nTekstfilen Kampagne.txt er blevet oprettet i undermappen 'Kampagne' i mappen 'Email'")
+                            
+                                                # Log oprettelsen af tekstfilen
+                                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                $logEntry = "[$timestamp] Tekstfilen Kampagne.txt er blevet oprettet"
+                                                Add-Content -Path $logfile -Value $logEntry
+                                            }
+                                        }
+                                        catch {
+                                            $StatusLabel.SelectionColor = "Orange"
+                                            $StatusLabel.AppendText("`nDer opstod en fejl under opdateringen/oprettelsen af tekstfilen (Kampagne.txt).")
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                            $logEntry = "`n[$timestamp] Fejlmeddelelse (opdatering/oprettelse af tekstfil - Kampagne.txt): $($_.Exception.Message)"
+                                            Add-Content -Path $logfile -Value $logEntry
+                                        }
+                                    }
+                                    catch {
+                                        $StatusLabel.SelectionColor = "Orange"
+                                        $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'OLD'.")
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - OLD): $($_.Exception.Message)"
+                                        Add-Content -Path $logfile -Value $logEntry
+                                    }
+                                }
+                                catch {
+                                    $StatusLabel.SelectionColor = "Orange"
+                                    $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Kampagne'.")
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - Kampagne): $($_.Exception.Message)"
+                                    Add-Content -Path $logfile -Value $logEntry
+                                }
+                            
+                                try {
+                                    # Opdater eller opret tekstfilen Email.txt med UTF8-BOM kodning
+                                    $mailNavnFilePath = Join-Path $mailNavnFolderPath "Email.txt"
+                                    $currentMail = ""
+                            
+                                    if (!(Test-Path $mailNavnFilePath)) {
+                                        $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                        [System.IO.File]::WriteAllText($mailNavnFilePath, $currentMail, $utf8BomEncoder)
+                                        #$StatusLabel.SelectionColor = "Green"
+                                        #$StatusLabel.AppendText("`nTekstfilen Email.txt er blevet oprettet")
+                            
+                                        # Log oprettelsen af tekstfilen
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Tekstfilen Email.txt er blevet oprettet"
+                                        Add-Content -Path $logfile -Value $logEntry
+                                    }
+                                }
+                                catch {
+                                    $StatusLabel.SelectionColor = "Orange"
+                                    $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af tekstfilen (Email.txt).")
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af tekstfil - Email.txt): $($_.Exception.Message)"
+                                    Add-Content -Path $logfile -Value $logEntry
+                                }
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Email'.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - Email): $($_.Exception.Message)"
+                                Add-Content -Path $logfile -Value $logEntry
+                            }
+                            
+                            try {
+                                # Opret mappen "Forvaltningsnavn" inde i den nye mappe
+                                $forvNavnFolderPath = Join-Path $newFolderPath "Forvaltningsnavn"
+                                New-Item -Path $forvNavnFolderPath -ItemType Directory | Out-Null
+                            
+                                # Log oprettelsen af mappen "Forvaltningsnavn"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Forvaltningsnavn"
+                                Add-Content -Path $logfile -Value $logEntry
+                            
+                                $StatusLabel.SelectionColor = "Green"
+                                $StatusLabel.AppendText("`nMappen 'Forvaltningsnavn' er oprettet i Dynamic Template mappen: $folderName")
+                            
+                                try {
+                                    # Opdater eller opret tekstfilen Forvaltningsnavn.txt med UTF8-BOM kodning
+                                    $forvNavnFilePath = Join-Path $forvNavnFolderPath "Forvaltningsnavn.txt"
+                                    $newForvNavn = $row.Forvaltningsnavn
+                                    $currentForvNavn = ""
+                            
+                                    if (Test-Path $forvNavnFilePath) {
+                                        $currentForvNavn = Get-Content -Path $forvNavnFilePath
+                                    }
+                            
+                                    if ($newForvNavn -ne $currentForvNavn) {
+                                        $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                        [System.IO.File]::WriteAllText($forvNavnFilePath, $newForvNavn, $utf8BomEncoder)
+                                        $StatusLabel.SelectionColor = "Green"
+                                        $StatusLabel.AppendText("`nTekstfilen Forvaltningsnavn.txt er blevet oprettet med værdien: ")
+                                        $StatusLabel.SelectionColor = "Black"
+                                        $StatusLabel.AppendText($newForvNavn)
+                                    }
+                                }
+                                catch {
+                                    $StatusLabel.SelectionColor = "Orange"
+                                    $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af tekstfilen (Forvaltningsnavn.txt).")
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af tekstfil - Forvaltningsnavn.txt): $($_.Exception.Message)"
+                                    Add-Content -Path $logfile -Value $logEntry
+                                }
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Forvaltningsnavn'.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - Forvaltningsnavn): $($_.Exception.Message)"
+                                Add-Content -Path $logfile -Value $logEntry
+                            }
+                                                        
+                            try {
+                                # Opret mappen "Kampagne" inde i den nye mappe
+                                $kampagneNavnFolderPath = Join-Path $newFolderPath "Kampagne"
+                                New-Item -Path $kampagneNavnFolderPath -ItemType Directory | Out-Null
+                            
+                                # Log oprettelsen af mappen "Kampagne"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Kampagne"
+                                Add-Content -Path $logfile -Value $logEntry
+                            
+                                $StatusLabel.SelectionColor = "Green"
+                                $StatusLabel.AppendText("`nMappen 'Kampagne' er oprettet i Dynamic Template mappen: $folderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Kampagne'.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - Kampagne): $($_.Exception.Message)"
+                                Add-Content -Path $logfile -Value $logEntry
+                            }
+                            
+                            try {
+                                # Opret mappen "Logo" inde i den nye mappe
+                                $logoNavnFolderPath = Join-Path $newFolderPath "Logo"
+                                New-Item -Path $logoNavnFolderPath -ItemType Directory | Out-Null
+                            
+                                # Log oprettelsen af mappen "Logo"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Logo"
+                                Add-Content -Path $logfile -Value $logEntry
+                            
+                                $StatusLabel.SelectionColor = "Green"
+                                $StatusLabel.AppendText("`nMappen 'Logo' er oprettet i Dynamic Template mappen: $folderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Logo'.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - Logo): $($_.Exception.Message)"
+                                Add-Content -Path $logfile -Value $logEntry
+                            }
+                            
+                            try {
+                                # Opret mappen "Webadresse" inde i den nye mappe
+                                $webadNavnFolderPath = Join-Path $newFolderPath "Webadresse"
+                                New-Item -Path $webadNavnFolderPath -ItemType Directory | Out-Null
+                            
+                                # Log oprettelsen af mappen "Webadresse"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Webadresse"
+                                Add-Content -Path $logfile -Value $logEntry
+                            
+                                $StatusLabel.SelectionColor = "Green"
+                                $StatusLabel.AppendText("`nMappen 'Webadresse' er oprettet i Dynamic Template mappen: $folderName")
+                            
+                                try {
+                                    # Opdater eller opret tekstfilen Webadresse.txt med UTF8-BOM kodning
+                                    $webadNavnFilePath = Join-Path $webadNavnFolderPath "Webadresse.txt"
+                                    $currentWebad = ""
+                            
+                                    if (!(Test-Path $webadNavnFilePath)) {
+                                        $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                        [System.IO.File]::WriteAllText($webadNavnFilePath, $currentWebad, $utf8BomEncoder)
+                                        #$StatusLabel.SelectionColor = "Green"
+                                        #$StatusLabel.AppendText("`nTekstfilen Webadresse.txt er blevet oprettet")
+                            
+                                        # Log oprettelsen af tekstfilen
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Tekstfilen Webadresse.txt er blevet oprettet"
+                                        Add-Content -Path $logfile -Value $logEntry
+                                    }
+                                }
+                                catch {
+                                    $StatusLabel.SelectionColor = "Orange"
+                                    $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af tekstfilen (Webadresse.txt).")
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "`n[$timestamp] Fejlmeddelelse oprettelse af tekstfil - Webadresse.txt): $($_.Exception.Message)"
+                                    Add-Content -Path $logfile -Value $logEntry
+                                }
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Webadresse'.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - Webadresse): $($_.Exception.Message)"
+                                Add-Content -Path $logfile -Value $logEntry
+                            }
+                            
+                            try {
+                                # Opret mappen "Weblink" inde i den nye mappe
+                                $WeblinkNavnFolderPath = Join-Path $newFolderPath "Weblink"
+                                New-Item -Path $WeblinkNavnFolderPath -ItemType Directory | Out-Null
+                            
+                                # Log oprettelsen af mappen "Weblink"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Weblink"
+                                Add-Content -Path $logfile -Value $logEntry
+                            
+                                $StatusLabel.SelectionColor = "Green"
+                                $StatusLabel.AppendText("`nMappen 'Weblink' er oprettet i Dynamic Template mappen: $folderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Weblink'")
+                            }
+                            
+                            try {
+                                # Opret mappen "Weblink2" inde i den nye mappe
+                                $Weblink2NavnFolderPath = Join-Path $newFolderPath "Weblink2"
+                                New-Item -Path $Weblink2NavnFolderPath -ItemType Directory | Out-Null
+                            
+                                # Log oprettelsen af mappen "Weblink2"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Weblink2"
+                                Add-Content -Path $logfile -Value $logEntry
+                            
+                                $StatusLabel.SelectionColor = "Green"
+                                $StatusLabel.AppendText("`nMappen 'Weblink2' er oprettet i Dynamic Template mappen: $folderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Weblink2'")
+                            }
+                            
+                            try {
+                                # Opret mappen "Webtxt" inde i den nye mappe
+                                $WebtxtNavnFolderPath = Join-Path $newFolderPath "Webtxt"
+                                New-Item -Path $WebtxtNavnFolderPath -ItemType Directory | Out-Null
+                            
+                                # Log oprettelsen af mappen "Webtxt"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Webtxt"
+                                Add-Content -Path $logfile -Value $logEntry
+                            
+                                $StatusLabel.SelectionColor = "Green"
+                                $StatusLabel.AppendText("`nMappen 'Webtxt' er oprettet i Dynamic Template mappen: $folderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Webtxt'")
+                            }
+                            
+                            try {
+                                # Opret mappen "Webtxt2" inde i den nye mappe
+                                $Webtxt2NavnFolderPath = Join-Path $newFolderPath "Webtxt2"
+                                New-Item -Path $Webtxt2NavnFolderPath -ItemType Directory | Out-Null
+                            
+                                # Log oprettelsen af mappen "Webtxt2"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Webtxt2"
+                                Add-Content -Path $logfile -Value $logEntry
+                            
+                                $StatusLabel.SelectionColor = "Green"
+                                $StatusLabel.AppendText("`nMappen 'Webtxt2' er oprettet i Dynamic Template mappen: $folderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Webtxt2'")
+                            }
+                            
+                            try {
+                                # Opret mappen "Åbningstider" inde i den nye mappe
+                                $timeNavnFolderPath = Join-Path $newFolderPath "Åbningstider"
+                                New-Item -Path $timeNavnFolderPath -ItemType Directory | Out-Null
+                            
+                                # Log oprettelsen af mappen "Åbningstider"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Åbningstider"
+                                Add-Content -Path $logfile -Value $logEntry
+                            
+                                $StatusLabel.SelectionColor = "Green"
+                                $StatusLabel.AppendText("`nMappen 'Åbningstider' er oprettet i Dynamic Template mappen: $folderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Åbningstider'")
+                            }
+                        }
+                    }
+                    catch {
+                        $StatusLabel.SelectionColor = "Red"
+                        $StatusLabel.AppendText("`n`Fejl: $_")
+                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                        $logEntry = "[$timestamp] Fejl opstod under oprettelse af nye Dynamic Template foldere: $_"
+                        Add-Content -Path $logfile -Value $logEntry        
+                    }
+                }
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.AppendText("`n`nAfsluttet Dynamic Template oprettelse.")
+                $logEntry = "-----Slut på oprettelse af Dynamic Template mapper og filer-----"
+                Add-Content -Path $logfile -Value $logEntry        
+            })
