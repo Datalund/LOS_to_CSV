@@ -31,20 +31,34 @@
                 
                             try {
                                 $folder = Get-ChildItem -Path $dynTempDir -Directory | Where-Object { $_.Name -eq $oldName }
-                
+
                                 if (!$folder) {
                                     $errorText = "Dynamic Template mappen '$oldName' eksisterer ikke."
                                     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-                                    $logEntry = "`n[$timestamp]" + " " + $errorText
+                                    $logEntry = "[$timestamp] $errorText"
                                     Add-Content -Path $logfile -Value $logEntry
-                
+
                                     $StatusLabel.SelectionColor = "Orange"
                                     $StatusLabel.SelectedText = "`n$errorText"
-                                    continue
                                 }
                                 else {
-                                    $updatedFolderPath = Join-Path $dynTempDir $updatedName
-                                    Rename-Item -Path $folder.FullName -NewName $updatedName -ErrorAction Stop
+                                    try {
+                                        $updatedFolderPath = Join-Path $dynTempDir $updatedName
+                                        Rename-Item -Path $folder.FullName -NewName $updatedName -ErrorAction Stop
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Mappen $folder er opdateret til $updatedName"
+                                        Add-Content -Path $logfile -Value $logEntry    
+                                        $StatusLabel.SelectionColor = "Green"
+                                        $StatusLabel.SelectedText = "`n`nMappen $folder er opdateret til $updatedName"
+                                    }
+                                    catch {
+                                        $errorMessage = $_.Exception.Message
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Fejl under opdatering af Dynamic Template mappen:`n$errorMessage"
+                                        Add-Content -Path $logfile -Value $logEntry
+                                        $StatusLabel.SelectionColor = "Red"
+                                        $StatusLabel.SelectedText = "`n$errorText"
+                                    }
                                 }
                 
                                 # Kontroller om mappen "Afdelingsnavn" eksisterer
@@ -55,7 +69,8 @@
                                         New-Item -Path $afdNavnFolderPath -ItemType Directory | Out-Null
                                         $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
                                         [System.IO.File]::WriteAllText("$afdNavnFolderPath\Afdelingsnavn.txt", $updatedName, $utf8BomEncoder)
-                                        $logEntry = "Mappen 'Afdelingsnavn' er blevet oprettet med værdien '$updatedName'."
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Mappen 'Afdelingsnavn' er blevet oprettet med værdien '$updatedName'."
                                         Add-Content -Path $logfile -Value $logEntry
                                         $StatusLabel.SelectionColor = "Green"
                                         $StatusLabel.SelectedText = "`nMappen 'Afdelingsnavn' er blevet oprettet."
@@ -68,24 +83,27 @@
                                             if ($currentAfdNavn -ne $updatedName) {
                                                 $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
                                                 [System.IO.File]::WriteAllText($afdNavnFilePath, $updatedName, $utf8BomEncoder)
-                                                $logEntry = "Tekstfilen '$afdNavnFilePath' er blevet opdateret med værdien '$updatedName' i UTF8-BOM kodning."
+                                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                $logEntry = "[$timestamp] Tekstfilen '$afdNavnFilePath' er blevet opdateret med værdien '$updatedName' i UTF8-BOM kodning."
                                                 Add-Content -Path $logfile -Value $logEntry
                                                 $StatusLabel.SelectionColor = "Green"
-                                                $StatusLabel.SelectedText = "`nTekstfilen 'Afdelingsnavn.txt' er blevet opdateret."
+                                                $StatusLabel.SelectedText = "`nTekstfilen 'Afdelingsnavn.txt' er blevet opdateret med værdien: $updatedName"
                                             }
                                             else {
-                                                $StatusLabel.SelectionColor = "Orange"
-                                                $StatusLabel.SelectedText = "`nTekstfilen 'Afdelingsnavn.txt' er allerede opdateret med den rigtige værdi."
+                                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                $errorLogEntry = "[$timestamp] Tekstfilen 'Afdelingsnavn.txt' er allerede opdateret med den rigtige værdi"
+                                                Add-Content -Path $logfile -Value $errorLogEntry
                                             }
                                         }
                                         else {
                                             # Opret en tekstfil "Afdelingsnavn.txt" med værdien i UTF8-BOM format
                                             $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
                                             [System.IO.File]::WriteAllText($afdNavnFilePath, $updatedName, $utf8BomEncoder)
-                                            $logEntry = "Tekstfilen '$afdNavnFilePath' er blevet oprettet med værdien '$updatedName' i UTF8-BOM kodning."
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                            $logEntry = "[$timestamp] Tekstfilen '$afdNavnFilePath' er blevet oprettet med værdien '$updatedName' i UTF8-BOM kodning."
                                             Add-Content -Path $logfile -Value $logEntry
                                             $StatusLabel.SelectionColor = "Green"
-                                            $StatusLabel.SelectedText = "`nTekstfilen 'Afdelingsnavn.txt' er blevet oprettet."
+                                            $StatusLabel.SelectedText = "`nTekstfilen 'Afdelingsnavn.txt' er blevet oprettet med værdien: $updatedName"
                                         }
                                     }
                                 }
@@ -101,32 +119,31 @@
                 
                                 # Kontroller om mappen "Bundgrafik" eksisterer
                                 $bundgfxFolderPath = Join-Path $updatedFolderPath "Bundgrafik"
-                                try {
-                                    if (!(Test-Path $bundgfxFolderPath)) {
-                                        # Opret mappen "Bundgrafik"
-                                        New-Item -Path $bundgfxFolderPath -ItemType Directory | Out-Null
+                                if (!(Test-Path $bundgfxFolderPath)) {
+                                    # Opret mappen "Bundgrafik"
+                                    try {
+                                        New-Item -Path $bundgfxFolderPath -ItemType Directory -ErrorAction Stop | Out-Null
                                         $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
                                         $logEntry = "[$timestamp] Ny mappe er oprettet: Bundgrafik"
                                         Add-Content -Path $logfile -Value $logEntry
                                         $StatusLabel.SelectionColor = "Green"
                                         $StatusLabel.SelectedText = "`nNy mappe er oprettet: Bundgrafik"
                                     }
-                                    else {
+                                    catch {
+                                        # Håndter eventuelle fejl, der opstår under oprettelse af mappen
+                                        $errorMessage = $_.Exception.Message
+                                        $StatusLabel.SelectionColor = "Red"
+                                        $StatusLabel.SelectedText = "`nFejl under oprettelse af mappen Bundgrafik: $errorMessage"
                                         $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-                                        $logEntry = "[$timestamp] Mappen 'Bundgrafik' eksisterer allerede og bliver ikke opdateret"
-                                        Add-Content -Path $logfile -Value $logEntry
-                                        $StatusLabel.SelectionColor = "Orange"
-                                        $StatusLabel.SelectedText = "`nMappen 'Bundgrafik' eksisterer allerede og bliver ikke opdateret"
+                                        $errorLogEntry = "[$timestamp] Fejl opstod under oprettelse af mappen 'Bundgrafik': $errorMessage"
+                                        Add-Content -Path $logfile -Value $errorLogEntry
                                     }
                                 }
-                                catch {
-                                    # Håndter eventuelle fejl, der opstår i try-blokken
-                                    $errorMessage = $_.Exception.Message
-                                    $StatusLabel.SelectionColor = "Red"
-                                    $StatusLabel.SelectedText = "`nFejl under oprettelse af mappen Bundgrafik: $errorMessage"
+                                else {
+                                    # Log eksisterende mappe uden at kaste en fejl
                                     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-                                    $errorLogEntry = "[$timestamp] Fejl opstod under oprettelse af mappen 'Bundgrafik': $errorMessage"
-                                    Add-Content -Path $logfile -Value $errorLogEntry
+                                    $logEntry = "[$timestamp] Mappen 'Bundgrafik' eksisterer allerede og bliver ikke opdateret"
+                                    Add-Content -Path $logfile -Value $logEntry
                                 }
                 
                                 # Kontroller om mappen "EAN" eksisterer
@@ -140,21 +157,24 @@
                                             if ($eanContent -notmatch "^\xEF\xBB\xBF") {
                                                 $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
                                                 [System.IO.File]::WriteAllText($eanFilePath, $eanContent, $utf8BomEncoder)
-                                                $logEntry = "Tekstfilen '$eanFilePath' er blevet formatteret som UTF8-BOM uden at ændre indholdet."
+                                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                $logEntry = "[$timestamp] Tekstfilen '$eanFilePath' er blevet formatteret som UTF8-BOM uden at ændre indholdet."
                                                 Add-Content -Path $logfile -Value $logEntry
                                                 $StatusLabel.SelectionColor = "Green"
                                                 $StatusLabel.SelectedText = "`nTekstfilen 'EAN.txt' er blevet formatteret korrekt."
                                             }
                                             else {
-                                                $StatusLabel.SelectionColor = "Orange"
-                                                $StatusLabel.SelectedText = "`nTekstfilen 'EAN.txt' er allerede formatteret korrekt."
+                                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                $errorLogEntry = "[$timestamp] Tekstfilen 'EAN.txt' er allerede formatteret korrekt"
+                                                Add-Content -Path $logfile -Value $errorLogEntry
                                             }
                                         }
                                         else {
                                             # Opret en tom tekstfil "EAN.txt" i UTF8-BOM format
                                             $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
                                             [System.IO.File]::WriteAllText($eanFilePath, "", $utf8BomEncoder)
-                                            $logEntry = "Tekstfilen '$eanFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM format."
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                            $logEntry = "[$timestamp] Tekstfilen '$eanFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM format."
                                             Add-Content -Path $logfile -Value $logEntry
                                             $StatusLabel.SelectionColor = "Green"
                                             $StatusLabel.SelectedText = "`nTekstfilen 'EAN.txt' er blevet oprettet som et tomt dokument i korrekt format."
@@ -166,7 +186,8 @@
                                         $eanFilePath = Join-Path $eanFolderPath "EAN.txt"
                                         $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
                                         [System.IO.File]::WriteAllText($eanFilePath, "", $utf8BomEncoder)
-                                        $logEntry = "Mappen 'EAN' er blevet oprettet, og tekstfilen '$eanFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM format."
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Mappen 'EAN' er blevet oprettet, og tekstfilen '$eanFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM format."
                                         Add-Content -Path $logfile -Value $logEntry
                                         $StatusLabel.SelectionColor = "Green"
                                         $StatusLabel.SelectedText = "`nMappen 'EAN' er blevet oprettet, og tekstfilen 'EAN.txt' er blevet oprettet som et tomt dokument i korrekt format."
@@ -194,25 +215,33 @@
                                                 $kampagneFilePath = Join-Path $kampagneFolderPath "Kampagne.txt"
                                                 try {
                                                     if (Test-Path $kampagneFilePath) {
+                                                        $currentKampagneBytes = [System.IO.File]::ReadAllBytes($kampagneFilePath)
+                                                        $isUtf8BomFormatted = ($currentKampagneBytes[0] -eq 0xEF) -and ($currentKampagneBytes[1] -eq 0xBB) -and ($currentKampagneBytes[2] -eq 0xBF)
+        
                                                         # Kontroller om tekstfilen er korrekt formatteret som UTF8-BOM
                                                         $kampagneContent = Get-Content -Path $kampagneFilePath -Raw
                                                         $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
-                                                        $isUtf8BomFormatted = ($kampagneContent -match "^\xEF\xBB\xBF")
 
                                                         if (!$isUtf8BomFormatted) {
                                                             # Overskriv den eksisterende fil med en ny fil i UTF8-BOM format
                                                             [System.IO.File]::WriteAllText($kampagneFilePath, $kampagneContent, $utf8BomEncoder)
-
-                                                            $logEntry = "Tekstfilen '$kampagneFilePath' er ikke korrekt formatteret som UTF8-BOM. Filen er blevet overskrevet med en ny fil i UTF8-BOM format."
+                                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                            $logEntry = "[$timestamp] Tekstfilen '$kampagneFilePath' er ikke korrekt formatteret som UTF8-BOM. Filen er blevet overskrevet med en ny fil i UTF8-BOM format."
                                                             Add-Content -Path $logfile -Value $logEntry
                                                             $StatusLabel.SelectionColor = "Green"
                                                             $StatusLabel.SelectedText = "`n$logEntry"
+                                                        }
+                                                        else {
+                                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                            $errorLogEntry = "[$timestamp] Tekstfilen '$kampagneFilePath' er allerede formatteret korrekt"
+                                                            Add-Content -Path $logfile -Value $errorLogEntry            
                                                         }
                                                     }
                                                     else {
                                                         # Opret en tom tekstfil "Kampagne.txt" i UTF8-BOM format
                                                         [System.IO.File]::WriteAllText($kampagneFilePath, "", $utf8BomEncoder)
-                                                        $logEntry = "Tekstfilen '$kampagneFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM kodning."
+                                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                        $logEntry = "[$timestamp] Tekstfilen '$kampagneFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM kodning."
                                                         Add-Content -Path $logfile -Value $logEntry
                                                         $StatusLabel.SelectionColor = "Green"
                                                         $StatusLabel.SelectedText = "`n$logEntry"
@@ -234,7 +263,8 @@
                                                     if (!(Test-Path $oldFolderPath)) {
                                                         # Opret mappen "OLD" inden for mappen "Kampagne"
                                                         New-Item -Path $oldFolderPath -ItemType Directory | Out-Null
-                                                        $logEntry = "Mappen 'OLD' er blevet oprettet inden for mappen 'Kampagne'."
+                                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                        $logEntry = "[$timestamp] Mappen 'OLD' er blevet oprettet inden for mappen 'Kampagne'."
                                                         Add-Content -Path $logfile -Value $logEntry
                                                         $StatusLabel.SelectionColor = "Green"
                                                         $StatusLabel.SelectedText = "`n$logEntry"
@@ -256,7 +286,8 @@
                                                 $kampagneFilePath = Join-Path $kampagneFolderPath "Kampagne.txt"
                                                 try {
                                                     [System.IO.File]::WriteAllText($kampagneFilePath, "", $utf8BomEncoder)
-                                                    $logEntry = "Mappen 'Kampagne' er blevet oprettet, mappen 'OLD' er blevet oprettet inden for den, og tekstfilen '$kampagneFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM kodning."
+                                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                    $logEntry = "[$timestamp] Mappen 'Kampagne' er blevet oprettet, mappen 'OLD' er blevet oprettet inden for den, og tekstfilen '$kampagneFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM kodning."
                                                     Add-Content -Path $logfile -Value $logEntry
                                                     $StatusLabel.SelectionColor = "Green"
                                                     $StatusLabel.SelectedText = "`n$logEntry"
@@ -264,7 +295,8 @@
                                                     # Opret mappen "OLD" inden for mappen "Kampagne"
                                                     $oldFolderPath = Join-Path $kampagneFolderPath "OLD"
                                                     New-Item -Path $oldFolderPath -ItemType Directory | Out-Null
-                                                    $logEntry = "Mappen 'OLD' er blevet oprettet inden for mappen 'Kampagne'."
+                                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                    $logEntry = "[$timestamp] Mappen 'OLD' er blevet oprettet inden for mappen 'Kampagne'."
                                                     Add-Content -Path $logfile -Value $logEntry
                                                     $StatusLabel.SelectionColor = "Green"
                                                     $StatusLabel.SelectedText = "`n$logEntry"
@@ -294,25 +326,32 @@
                                         $emailFilePath = Join-Path $emailFolderPath "Email.txt"
                                         try {
                                             if (Test-Path $emailFilePath) {
-                                                # Kontroller om tekstfilen er korrekt formatteret som UTF8-BOM
-                                                $emailContent = Get-Content -Path $emailFilePath -Raw
-                                                $isUtf8BomFormatted = ($emailContent -match "^\xEF\xBB\xBF")
-
+                                                $currentEmailBytes = [System.IO.File]::ReadAllBytes($emailFilePath)
+                                                $isUtf8BomFormatted = ($currentEmailBytes[0] -eq 0xEF) -and ($currentEmailBytes[1] -eq 0xBB) -and ($currentEmailBytes[2] -eq 0xBF)
+                                            
                                                 if (!$isUtf8BomFormatted) {
                                                     # Overskriv den eksisterende fil med en ny fil i UTF8-BOM format
-                                                    [System.IO.File]::WriteAllText($emailFilePath, $emailContent, $utf8BomEncoder)
-
+                                                    $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                                    [System.IO.File]::WriteAllText($emailFilePath, $utf8BomEncoder)
+                                            
                                                     $logEntry = "Tekstfilen '$emailFilePath' er ikke korrekt formatteret som UTF8-BOM. Filen er blevet overskrevet med en ny fil i UTF8-BOM format."
-                                                    Add-Content -Path $logfile -Value $logEntry
+                                                    Add-Content -Path $logfile -Value "[$(Get-Date -Format "dd-MM-yyyy HH:mm:ss")] $logEntry"
                                                     $StatusLabel.SelectionColor = "Green"
                                                     $StatusLabel.SelectedText = "`n$logEntry"
+                                                }
+                                                else {
+                                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                    $errorLogEntry = "[$timestamp] Tekstfilen '$emailFilePath' er allerede formatteret korrekt"
+                                                    Add-Content -Path $logfile -Value $errorLogEntry            
                                                 }
                                             }
                                             else {
                                                 # Opret en tom tekstfil "Email.txt" i UTF8-BOM format
-                                                [System.IO.File]::WriteAllText($emailFilePath, "", $utf8BomEncoder)
+                                                $byteOrderMarkUtf8 = [byte[]](0xEF, 0xBB, 0xBF)
+                                                [System.IO.File]::WriteAllBytes($emailFilePath, $byteOrderMarkUtf8)
+                                            
                                                 $logEntry = "Tekstfilen '$emailFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM kodning."
-                                                Add-Content -Path $logfile -Value $logEntry
+                                                Add-Content -Path $logfile -Value "[$(Get-Date -Format "dd-MM-yyyy HH:mm:ss")] $logEntry"
                                                 $StatusLabel.SelectionColor = "Green"
                                                 $StatusLabel.SelectedText = "`n$logEntry"
                                             }
@@ -335,16 +374,18 @@
                                             New-Item -Path $kampagneFolderPath -ItemType Directory | Out-Null
                                             $kampagneFilePath = Join-Path $kampagneFolderPath "Kampagne.txt"
                                             [System.IO.File]::WriteAllText($kampagneFilePath, "", $utf8BomEncoder)
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
                                             $logEntry = "Mappen 'Email' er blevet oprettet, mappen 'Kampagne' er blevet oprettet inden for den, og tekstfilen '$kampagneFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM kodning."
-                                            Add-Content -Path $logfile -Value $logEntry
+                                            Add-Content -Path $logfile -Value "$timestamp $logEntry"
                                             $StatusLabel.SelectionColor = "Green"
                                             $StatusLabel.SelectedText = "`n$logEntry"
 
                                             # Opret mappen "OLD" inden for mappen "Kampagne"
                                             $oldFolderPath = Join-Path $kampagneFolderPath "OLD"
                                             New-Item -Path $oldFolderPath -ItemType Directory | Out-Null
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
                                             $logEntry = "Mappen 'OLD' er blevet oprettet inden for mappen 'Kampagne'."
-                                            Add-Content -Path $logfile -Value $logEntry
+                                            Add-Content -Path $logfile -Value "$timestamp $logEntry"
                                             $StatusLabel.SelectionColor = "Green"
                                             $StatusLabel.SelectedText = "`n$logEntry"
                                         }
@@ -388,8 +429,10 @@
                                         $forvaltningFilePath = Join-Path $forvaltningFolderPath "Forvaltningsnavn.txt"
                                         try {
                                             if (Test-Path $forvaltningFilePath) {
-                                                $currentForvaltning = Get-Content -Path $forvaltningFilePath
-                                                if ($currentForvaltning -ne $updatedForvName) {
+                                                $currentForvaltningBytes = [System.IO.File]::ReadAllBytes($forvaltningFilePath)
+                                                $isUtf8BomFormatted = ($currentForvaltningBytes[0] -eq 0xEF) -and ($currentForvaltningBytes[1] -eq 0xBB) -and ($currentForvaltningBytes[2] -eq 0xBF)
+                                            
+                                                if (!$isUtf8BomFormatted) {
                                                     $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
                                                     [System.IO.File]::WriteAllText($forvaltningFilePath, $updatedForvName, $utf8BomEncoder)
                                                     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
@@ -398,9 +441,16 @@
                                                     $StatusLabel.SelectionColor = "Green"
                                                     $StatusLabel.SelectedText = "`n$logEntry"
                                                 }
+                                                elseif ((Get-Content -Path $forvaltningFilePath) -ne $updatedForvName) {
+                                                    [System.IO.File]::WriteAllText($forvaltningFilePath, $updatedForvName)
+                                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                    $logEntry = "Tekstfilen '$forvaltningFilePath' er blevet opdateret med værdien '$updatedForvName'."
+                                                    Add-Content -Path $logfile -Value "[$timestamp] $logEntry"
+                                                    $StatusLabel.SelectionColor = "Green"
+                                                    $StatusLabel.SelectedText = "`n$logEntry"
+                                                }
                                             }
                                             else {
-                                                # Opret en tekstfil "Forvaltningsnavn.txt" med værdien i UTF8-BOM format
                                                 $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
                                                 [System.IO.File]::WriteAllText($forvaltningFilePath, $updatedForvName, $utf8BomEncoder)
                                                 $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
@@ -433,35 +483,33 @@
 
                                 # Kontroller om mappen "Kampagne" eksisterer
                                 $kampFolderPath = Join-Path $updatedFolderPath "Kampagne"
-                                try {
-                                    if (!(Test-Path $kampFolderPath)) {
-                                        # Opret mappen "Kampagne"
-                                        New-Item -Path $kampFolderPath -ItemType Directory | Out-Null
+                                if (!(Test-Path $kampFolderPath)) {
+                                    # Opret mappen "Kampagne"
+                                    try {
+                                        New-Item -Path $kampFolderPath -ItemType Directory -ErrorAction Stop | Out-Null
                                         $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
                                         $logEntry = "Ny mappe er oprettet: Kampagne"
-                                        Add-Content -Path $logfile -Value "[$timestamp] " $logEntry
+                                        Add-Content -Path $logfile -Value "[$timestamp] $logEntry"
                                         $StatusLabel.SelectionColor = "Green"
-                                        $StatusLabel.SelectedText = "`nNy mappe er oprettet: Kampagne"            
+                                        $StatusLabel.SelectedText = "`nNy mappe er oprettet: Kampagne"
                                     }
-                                    else {
+                                    catch {
+                                        # Håndter eventuelle fejl, der opstår under oprettelse af mappen
+                                        $errorMessage = $_.Exception.Message
+                                        $StatusLabel.SelectionColor = "Red"
+                                        $StatusLabel.SelectedText = "`nFejl under oprettelse af mappen Kampagne: $errorMessage"
                                         $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-                                        $logEntry = "Mappen 'Kampagne' eksisterer allerede og bliver ikke opdateret"
-                                        Add-Content -Path $logfile -Value "[$timestamp] " $logEntry
-                                        $StatusLabel.SelectionColor = "Orange"
-                                        $StatusLabel.SelectedText = "`nMappen 'Kampagne' eksisterer allerede og bliver ikke opdateret"            
-    
+                                        $errorLogEntry = "Fejl opstod under oprettelse af mappen 'Kampagne': $errorMessage"
+                                        Add-Content -Path $logfile -Value "[$timestamp] $errorLogEntry"
                                     }
                                 }
-                                catch {
-                                    # Håndter eventuelle fejl, der opstår i try-blokken
-                                    $errorMessage = $_.Exception.Message
-                                    $StatusLabel.SelectionColor = "Red"
-                                    $StatusLabel.SelectedText = "`nFejl under oprettelse af mappen Kampagne: $errorMessage"            
+                                else {
+                                    # Log eksisterende mappe uden at kaste en fejl
                                     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-                                    $errorLogEntry = "Fejl opstod under oprettelse af mappen 'Kampagne': $errorMessage"
-                                    Add-Content -Path $logfile -Value "[$timestamp] " $logEntry
+                                    $logEntry = "Mappen 'Kampagne' eksisterer allerede og bliver ikke opdateret"
+                                    Add-Content -Path $logfile -Value "[$timestamp] $logEntry"
                                 }
-
+ 
                                 # Kontroller om mappen "Logo" eksisterer
                                 $LogoUpdateFolderPath = Join-Path $updatedFolderPath "Logo"
                                 try {
@@ -478,8 +526,6 @@
                                         $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
                                         $logEntry = "[$timestamp] Mappen 'Logo' eksisterer allerede og bliver ikke opdateret"
                                         Add-Content -Path $logfile -Value $logEntry
-                                        $StatusLabel.SelectionColor = "Orange"
-                                        $StatusLabel.SelectedText = "`nMappen 'Logo' eksisterer allerede og bliver ikke opdateret"
                                     }
                                 }
                                 catch {
@@ -579,8 +625,6 @@
                                         $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
                                         $logEntry = "[$timestamp] Mappen 'Weblink' eksisterer allerede og bliver ikke opdateret"
                                         Add-Content -Path $logfile -Value $logEntry
-                                        $StatusLabel.SelectionColor = "Orange"
-                                        $StatusLabel.SelectedText = "`nMappen 'Weblink' eksisterer allerede og bliver ikke opdateret"
                                     }
                                 }
                                 catch {
@@ -609,8 +653,6 @@
                                         $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
                                         $logEntry = "[$timestamp] Mappen 'Weblink2' eksisterer allerede og bliver ikke opdateret"
                                         Add-Content -Path $logfile -Value $logEntry
-                                        $StatusLabel.SelectionColor = "Orange"
-                                        $StatusLabel.SelectedText = "`nMappen 'Weblink2' eksisterer allerede og bliver ikke opdateret"
                                     }
                                 }
                                 catch {
@@ -639,8 +681,6 @@
                                         $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
                                         $logEntry = "[$timestamp] Mappen 'Webtxt' eksisterer allerede og bliver ikke opdateret"
                                         Add-Content -Path $logfile -Value $logEntry
-                                        $StatusLabel.SelectionColor = "Orange"
-                                        $StatusLabel.SelectedText = "`nMappen 'Webtxt' eksisterer allerede og bliver ikke opdateret"
                                     }
                                 }
                                 catch {
@@ -669,8 +709,6 @@
                                         $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
                                         $logEntry = "[$timestamp] Mappen 'Webtxt2' eksisterer allerede og bliver ikke opdateret"
                                         Add-Content -Path $logfile -Value $logEntry
-                                        $StatusLabel.SelectionColor = "Orange"
-                                        $StatusLabel.SelectedText = "`nMappen 'Webtxt2' eksisterer allerede og bliver ikke opdateret"
                                     }
                                 }
                                 catch {
@@ -699,8 +737,6 @@
                                         $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
                                         $logEntry = "[$timestamp] Mappen 'Åbningstider' eksisterer allerede og bliver ikke opdateret"
                                         Add-Content -Path $logfile -Value $logEntry
-                                        $StatusLabel.SelectionColor = "Orange"
-                                        $StatusLabel.SelectedText = "`nMappen 'Åbningstider' eksisterer allerede og bliver ikke opdateret"
                                     }
                                 }
                                 catch {
@@ -714,22 +750,24 @@
                                 }
                             }
                             catch {
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
                                 $errorText = "Fejl: $_"
                                 $logEntry = $errorText
-                                Add-Content -Path $logfile -Value $logEntry
+                                Add-Content -Path $logfile -Value "[$timestamp] $logEntry"
                 
                                 $StatusLabel.SelectionColor = "Orange"
                                 $StatusLabel.SelectedText = "`n$errorText"
                             }                    
                         }
                         $StatusLabel.SelectionColor = "Green"
-                        $StatusLabel.SelectedText = "`nAlle mappenavne og tekstfiler er blevet opdateret."
+                        $StatusLabel.SelectedText = "`n`nAlle mappenavne og tekstfiler er blevet opdateret."
                     }
                 }
                 catch {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
                     $errorText = "Fejl: $_"
                     $logEntry = $errorText
-                    Add-Content -Path $logfile -Value $logEntry
+                    Add-Content -Path $logfile -Value "[$timestamp] $logEntry"
                 
                     $StatusLabel.SelectionColor = "Orange"
                     $StatusLabel.SelectedText = "`n$errorText"
