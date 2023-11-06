@@ -6,39 +6,62 @@ Add-Type -AssemblyName System.Drawing
 ############################################################################################ Setting up the Windows form ############################################################################################
 
 #Set enviroment for script
-$IsHome = "Yes"
+$IsHome = "no"
+$IsTest = "Yes"
 
 # Setup version number
-$version = "Version 1.0"
+$version = "Version 1.007"
 
 # Shared variables used for creating CSV files later in the script
 $Encoding = 'UTF8'
 
-If ($IsHome -eq "Yes") {
-    # Directories used in the script for Home enviroment
-    $logFilePath = "C:\Users\Datalund\Desktop\TestMappe\LOStilCSV\"
-    $FolderPath = "C:\Users\Datalund\Desktop\TestMappe\LOStilCSV\"
-    $orgReferenceFilePath = "C:\Users\Datalund\Desktop\Powershell\LOS Master Data\Organisations Enheder\"
-    $orgReferenceFile = Import-Csv -Path (Join-Path $orgReferenceFilePath "dataobjects_1000504.csv") -Delimiter ";" -Encoding UTF7 | Sort-Object NRID -Unique
-    $dynTempDir = 'C:\Users\Datalund\Desktop\TestMappe\Dania\Ressourcer\'
-    $Delimiter = ','
+try {
+    If ($IsHome -eq "Yes") {
+        # Directories used in the script for Home enviroment
+        $logFilePath = "C:\Users\Datalund\Desktop\TestMappe\LOStilCSV\"
+        $FolderPath = "C:\Users\Datalund\Desktop\TestMappe\LOStilCSV\"
+        $orgReferenceFilePath = "C:\Users\Datalund\Desktop\Powershell\LOS Master Data\Organisations Enheder\"
+        $dynTempDir = 'C:\Users\Datalund\Desktop\TestMappe\Dania\Ressourcer\'
+        $Delimiter = ','
+    }
+    else {
+        # Directories used in the script for Kolding enviroment
+        $versionFilePath = "\\Kolding.dk\koldfs\KOLDING\CF IT og digitalisering\Projekt og Udvikling\LOS\"
+        $logFilePath = "\\Kolding.dk\koldfs\KOLDING\CF IT og digitalisering\Projekt og Udvikling\LOS\LOS udførsel\Logs\"
+        $FolderPath = "\\Kolding.dk\koldfs\KOLDING\CF IT og digitalisering\Projekt og Udvikling\LOS\LOS udførsel\LOS til CSV\"
+        $orgReferenceFilePath = "\\Kolding.dk\koldfs\KOLDING\CF IT og digitalisering\Projekt og Udvikling\LOS\LOS Master Data\Organisations Enheder\"
+        $locationReferenceFilePath = "\\Kolding.dk\koldfs\KOLDING\CF IT og digitalisering\Projekt og Udvikling\LOS\LOS Master Data\Lokationer\"
+        $ressourceReferenceFilePath = "\\Kolding.dk\koldfs\KOLDING\CF IT og digitalisering\Projekt og Udvikling\LOS\LOS Master Data\Alle OIS Ressourcer\"
+        $dynTempDir = '\\Kolding.dk\koldfs\alle_system$\Dania\Ressourcer\'
+        $Delimiter = ';'
+    }
+    if ($IsTest = "Yes") {
+        $dynTempDir = '\\Kolding.dk\koldfs\KOLDING\CF IT og digitalisering\Brugere\Martin Lund Kristensen\DynTempTest\'
+    }
+    else {
+        $dynTempDir = '\\Kolding.dk\koldfs\alle_system$\Dania\Ressourcer\'
+    }    
 }
-else {
-    # Directories used in the script for Kolding enviroment
-    $logFilePath = "\\Kolding.dk\koldfs\KOLDING\CF IT og digitalisering\Brugere\Martin Lund Kristensen\Scripts\Powershell\createCSVfromLOS\Logs\"
-    $FolderPath = "\\Kolding.dk\koldfs\KOLDING\CF IT og digitalisering\Brugere\Martin Lund Kristensen\Scripts\Powershell\createCSVfromLOS\"
-    $orgReferenceFilePath = "\\Kolding.dk\koldfs\KOLDING\CF IT og digitalisering\Projekt og Udvikling\LOS\LOS Master Data\Organisations Enheder\"
-    $orgReferenceFile = Import-Csv -Path (Join-Path $orgReferenceFilePath "dataobjects_1000504.csv") -Delimiter ";" -Encoding UTF7 | Sort-Object NRID -Unique
-    $dynTempDir = '\\Kolding.dk\koldfs\alle_system$\Dania\Ressourcer\'
-    $Delimiter = ';'
+catch {
+    $errorMessage = "Fejl under stikonfiguration:`n$($_.Exception.Message)"
+
+    # Vis en fejldialogboks til brugeren
+    [System.Windows.Forms.MessageBox]::Show($errorMessage, "Fejl under stikonfiguration", "OK", "Error")
+
+    return  # Stop scriptets udførelse i denne metode eller funktion
 }
 
 # Get the current date and format it for the log file name
 $currentDate = Get-Date -Format "dd-MM-yyyy"
 
 # Shared variables for both enviroments
+$versionFile = Join-Path $versionFilePath "Versionshistorik LOS værktøj.docx"
 $logFile = Join-Path $logFilePath "LOS_log_$currentDate.txt"
 $deleteDynTempFolder = Join-Path $dynTempDir "\Slettede afdelinger"
+$orgReferenceFile = Import-Csv -Path (Join-Path $orgReferenceFilePath "dataobjects_1000504.csv") -Delimiter ";" -Encoding UTF7 | Sort-Object NRID -Unique
+$locationReferenceFile = Import-Csv -Path (Join-Path $locationReferenceFilePath "dataobjects_1000558.csv") -Delimiter ";" -Encoding UTF7
+$ressourceReferenceFile = Import-Csv -Path (Join-Path $ressourceReferenceFilePath "dataobjects_1000686.csv") -Delimiter ";" -Encoding UTF7 | Sort-Object System
+$SAPASystem = $ressourceReferenceFile | Where-Object { $_.System -eq "SAPA" }
 
 # Create an array to store paths that do not exist
 $nonexistentPaths = @()
@@ -56,6 +79,11 @@ if (!(Test-Path $dynTempDir)) {
     $nonexistentPaths += "Dynamic template sti: $dynTempDir"
 }
 
+if (!(Test-Path $ressourceReferenceFilePath)) {
+    $nonexistentPaths += "Dynamic template sti: $ressourceReferenceFilePath"
+}
+
+
 # If any nonexistent paths were found, display an error message and stop further execution
 if ($nonexistentPaths.Count -gt 0) {
     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
@@ -68,7 +96,7 @@ if ($nonexistentPaths.Count -gt 0) {
     Add-Content -Path $logfile -Value $logEntry
     return
 }
-else{
+else {
     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
     $successText = "[$timestamp] Alle stier til data kunne indlæses"
     Add-Content -Path $logFile -Value "`r`n`r`n--- [$timestamp] : NY KØRSEL ---`r`n"
@@ -78,7 +106,7 @@ else{
 # If the log file already exists, add a separator to indicate a new run
 if (Test-Path $logFile) {
     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-    Add-Content -Path $logFile -Value "`n[$timestamp] Logfilen fandtes allerede. Tekst tilføjes"
+    Add-Content -Path $logFile -Value "`n[$timestamp] Logfilen fandtes allerede. Tekst tilføjes`n"
 }
 
 # Create form
@@ -213,7 +241,6 @@ catch {
     # Write the error to the log file
     Add-Content -Path $logfile -Value $logEntry
 }
-
 function Clear-StatusLabel {
     $StatusLabel.Clear()
 }
@@ -253,7 +280,7 @@ try {
     $SheetLabel = New-Object System.Windows.Forms.RichTextBox
     $SheetLabel.Location = New-Object System.Drawing.Point(10, 100)
     $SheetLabel.BorderStyle = [System.Windows.Forms.BorderStyle]::Fixed3D
-    $SheetLabel.ScrollBars = "None"
+    $SheetLabel.ScrollBars = "Vertical"
     $SheetLabel.ReadOnly = $true
     $Font = New-Object System.Drawing.Font("Microsoft Sans Serif", 10)
     $SheetLabel.Font = $Font
@@ -320,7 +347,6 @@ catch {
     # Write the error to the log file
     Add-Content -Path $logfile -Value $logEntry
 }
-
 # Function to adjust Status Label position
 function AdjustStatusLabelPosition() {
     try {
@@ -348,14 +374,23 @@ function AdjustStatusLabelPosition() {
         # Calculate the new minimum width based on Sheet Label and Status Label boxes
         $newMinWidth = $SheetLabel.Left + $SheetLabel.Width + 10 + $StatusLabel.Width + 10
 
-        # Get the working area of the screen
-        $screen = [System.Windows.Forms.Screen]::FromControl($Form)
-        $maxWidth = $screen.WorkingArea.Width
+        # Get the screen working area
+        $screenWorkingArea = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+
+        # Calculate the maximum allowed width and height
+        $maxWidth = $screenWorkingArea.Width - 10
+        $maxHeight = $screenWorkingArea.Height - 10
+
 
         # Check if the new minimum width exceeds the maximum width
         if ($newMinWidth -gt $maxWidth) {
             $newMinWidth = $maxWidth
         }
+
+        # Check if the new minimum height exceeds the maximum height
+        if ($newMinHeight -gt $maxHeight) {
+            $newMinHeight = $maxHeight
+        }        
 
         # Set the new size of the form
         $Form.ClientSize = New-Object System.Drawing.Size($newMinWidth, $minHeight)
@@ -375,7 +410,7 @@ function AdjustStatusLabelPosition() {
     }
     catch {
         $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-        $logEntry = "[$timestamp] Fejl under justering af StatusLabel position:`r`n$_`r`n`r`n"
+        $logEntry = "[$timestamp] Fejl under justering af StatusLabel position:`r`n$_"
 
         # Write the error to the log file
         Add-Content -Path $logfile -Value $logEntry
@@ -395,6 +430,9 @@ $StatusLabel.add_TextChanged({
         AdjustStatusLabelPosition
     })
 
+# Set the vertical scrollbar and word wrap for the Status Label
+$StatusLabel.ScrollBars = "Vertical"
+$StatusLabel.WordWrap = $true
 
 # Function to adjust Cancel Button position
 function AdjustCancelButtonPosition() {
@@ -407,22 +445,36 @@ function AdjustCancelButtonPosition() {
 try {
     $VersionLabel = New-Object System.Windows.Forms.Label
     $VersionLabel.AutoSize = $true
-    $VersionLabel.Text = "$version | Forfatter: Martin Lund Kristensen"
+    $VersionLabel.Text = "$version"
     $Form.Controls.Add($VersionLabel)
 
     # Add MouseDown event to open the log file
     $VersionLabel.Add_MouseDown({
-            Start-Process -FilePath $logfile
+            Start-Process -FilePath $versionFile
         })
+
+    # Create author label
+    $AuthorLabel = New-Object System.Windows.Forms.Label
+    $AuthorLabel.AutoSize = $true
+    $AuthorLabel.Text = " | Forfatter: Martin Lund Kristensen"
+    $Form.Controls.Add($AuthorLabel)
+
+    # Add MouseDown event to open the author document
+    $AuthorLabel.Add_MouseDown({
+        Start-Process -FilePath $logFile
+    })
+
+    # Position the author label right after the version label
+    $AuthorLabel.Location = New-Object System.Drawing.Point($VersionLabel.Right, $VersionLabel.Top)
 
     # Log entry for successful addition of version and author label
     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-    $successText = "[$timestamp] VersionLabel oprettet uden fejl."
+    $successText = "[$timestamp] VersionLabel og AuthorLabel oprettet uden fejl."
     Add-Content -Path $logfile -Value $successText
 }
 catch {
     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-    $logEntry = "[$timestamp] Fejl under oprettelse af VersionLabel:`r`n$_`r`n`r`n"
+    $logEntry = "[$timestamp] Fejl under oprettelse af VersionLabel:`r`n$_"
 
     # Write the error to the log file
     Add-Content -Path $logfile -Value $logEntry
@@ -432,10 +484,11 @@ catch {
 function AdjustVersionLabelPosition() {
     try {
         $VersionLabel.Location = New-Object System.Drawing.Point(10, ($Form.ClientSize.Height - $VersionLabel.Height - 10))
+        $AuthorLabel.Location = New-Object System.Drawing.Point($VersionLabel.Right, $VersionLabel.Top)
     }
     catch {
         $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-        $logEntry = "[$timestamp] Fejl under justering af VersionLabel position: $($_.Exception.Message)`r`n`r`n"
+        $logEntry = "[$timestamp] Fejl under justering af VersionLabel position: $($_.Exception.Message)"
     
         # Write the error to the log file
         Add-Content -Path $logfile -Value $logEntry
@@ -448,7 +501,7 @@ try {
 }
 catch {
     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-    $logEntry = "[$timestamp] Fejl under justering af VersionLabel position: $($_.Exception.Message)`r`n`r`n"
+    $logEntry = "[$timestamp] Fejl under justering af VersionLabel position: $($_.Exception.Message)"
 
     # Write the error to the log file
     Add-Content -Path $logfile -Value $logEntry
@@ -456,16 +509,16 @@ catch {
 
 # Add resize event to adjust the version label position
 $Form.Add_Resize({
-    try {
-        AdjustVersionLabelPosition
-    }
-    catch {
-        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-        $logEntry = "[$timestamp] Fejl under justering af VersionLabel position og størrelse: $($_.Exception.Message)`r`n`r`n"
-        # Write the error to the log file
-        Add-Content -Path $logfile -Value $logEntry
-    }
-})
+        try {
+            AdjustVersionLabelPosition
+        }
+        catch {
+            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+            $logEntry = "[$timestamp] Fejl under justering af VersionLabel position og størrelse: $($_.Exception.Message)"
+            # Write the error to the log file
+            Add-Content -Path $logfile -Value $logEntry
+        }
+    })
 
 # Perform check for Excel installation and version
 function Test-ExcelInstallation {
@@ -475,16 +528,17 @@ function Test-ExcelInstallation {
 
         if ($excelPath) {
             $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-            $logEntry = "[$timestamp] Excel er installeret på computeren`r`n`r`n"
+            $logEntry = "[$timestamp] Excel er installeret på computeren"
             # Write the success to the log file
             Add-Content -Path $logfile -Value $logEntry
-        } else {
+        }
+        else {
             $message = "Dette script kræver at Excel er installeret på computeren."
             $Message += "`nDenne computer har ikke Excel installeret og kan derfor ikke afvikle scriptet."
             $Message += "`nInstaller Excel på computeren og prøv igen, eller kør scriptet på en computer der har Excel installeret"
             [System.Windows.Forms.MessageBox]::Show($message, "Excel mangler", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
             $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-            $logEntry = "[$timestamp] Excel er ikke installeret på computeren. Scriptet stopper`r`n`r`n"
+            $logEntry = "[$timestamp] Excel er ikke installeret på computeren. Scriptet stopper"
             # Write the error to the log file
             Add-Content -Path $logfile -Value $logEntry
             exit
@@ -497,17 +551,19 @@ function Test-ExcelInstallation {
 
         if ($confirmation -eq 'Yes') {
             $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-            $logEntry = "[$timestamp] Excel er installeret på computeren ifølge brugerens bekræftelse`r`n`r`n"
+            $logEntry = "[$timestamp] Excel er installeret på computeren ifølge brugerens bekræftelse"
             # Write the success to the log file
             Add-Content -Path $logfile -Value $logEntry
-        } else {
+        }
+        else {
             $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-            $logEntry = "[$timestamp] Excel er ikke installeret på computeren ifølge brugerens bekræftelse`r`n`r`n"
+            $logEntry = "[$timestamp] Excel er ikke installeret på computeren ifølge brugerens bekræftelse"
             # Write the error to the log file
             Add-Content -Path $logfile -Value $logEntry
             exit
         }
-    }}
+    }
+}
 
 # Kald funktionen for at teste Excel-installationen
 Test-ExcelInstallation
@@ -522,7 +578,7 @@ try {
 }
 catch {
     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-    $logEntry = "[$timestamp] Fejl under oprettelse af ToolTip: $($_.Exception.Message)`r`n`r`n"
+    $logEntry = "[$timestamp] Fejl under oprettelse af ToolTip: $($_.Exception.Message)"
 
     # Write the error to the log file
     Add-Content -Path $logfile -Value $logEntry
@@ -544,7 +600,7 @@ try {
 }
 catch {
     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-    $logEntry = "[$timestamp] Fejl under oprettelse af BrowseButton:`r`n$_`r`n`r`n"
+    $logEntry = "[$timestamp] Fejl under oprettelse af BrowseButton:`r`n$_"
 
     # Write the error to the log file
     Add-Content -Path $logfile -Value $logEntry
@@ -552,13 +608,91 @@ catch {
     Write-Host "Fejl under oprettelse af BrowseButton: $_"
 }
 
+# Create Dynamic Template create button (hidden initially)
+try {
+    $CreateDynButton = New-Object System.Windows.Forms.Button
+    $CreateDynButton.Size = New-Object System.Drawing.Size(140, 30)
+    $CreateDynButton.Text = "Opret Dynamic Template"
+    $CreateDynButton.Visible = $false # Change to $true to show initially
+    $CreateDynButton.Enabled = $false # Change to $true to enable initially
+    $CreateDynButton.BackColor = $ButtonColor
+    $ToolTip.SetToolTip($CreateDynButton, "Opret nye Dynamic Template foldere")
+
+    # Log entry for successful creation of Dynamic Template create button
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] CreateDynButton oprettet uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under oprettelse af CreateDynButton:`r`n$_"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+
+    Write-Host "Fejl under oprettelse af CreateDynButton: $_"
+}
+
+# Create Dynamic Template change button (hidden initially)
+try {
+    $ChangeDynButton = New-Object System.Windows.Forms.Button
+    $ChangeDynButton.Location = New-Object System.Drawing.Point(10, 10)
+    $ChangeDynButton.Size = New-Object System.Drawing.Size(160, 30)
+    $ChangeDynButton.Text = "Opdater Dynamic Template"
+    $ChangeDynButton.Visible = $false # Change to $true to show initially
+    $ChangeDynButton.Enabled = $false # Change to $true to enable initially
+    $ChangeDynButton.BackColor = $ButtonColor
+    $ToolTip.SetToolTip($ChangeDynButton, "Opdater eksisterende Dynamic Template foldere")
+
+    # Log entry for successful creation of Create Dynamic Template button
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] ChangeDynButton oprettet uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under oprettelse af ChangeDynButton:`r`n$_"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+
+    Write-Host "Fejl under oprettelse af ChangeDynButton: $_"
+}
+
+# Create Dynamic Template delete button (hidden initially)
+try {
+    $DeleteDynButton = New-Object System.Windows.Forms.Button
+    $DeleteDynButton.Location = New-Object System.Drawing.Point(10, 10)
+    $DeleteDynButton.Size = New-Object System.Drawing.Size(140, 30)
+    $DeleteDynButton.Text = "Slet Dynamic Template"
+    $DeleteDynButton.Visible = $false # Change to $true to show initially
+    $DeleteDynButton.Enabled = $false # Change to $true to enable initially
+    $DeleteDynButton.BackColor = $ButtonColor
+    $ToolTip.SetToolTip($DeleteDynButton, "Slet Dynamic Template foldere")
+
+    # Log entry for successful creation of Delete Dynamic Template button
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] DeleteDynButton oprettet uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under oprettelse af DeleteDynButton:`r`n$_"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+
+    Write-Host "Fejl under oprettelse af DeleteDynButton: $_"
+}
+
+
 # Create export button (hidden initially)
 try {
     $ExportButton = New-Object System.Windows.Forms.Button
     $ExportButton.Location = New-Object System.Drawing.Point(120, 10)
     $ExportButton.Size = New-Object System.Drawing.Size(100, 30)
     $ExportButton.Text = "Eksporter CSV"
-    $ExportButton.Visible = $false
+    $ExportButton.Visible = $false # Change to $true to show initially
     $ExportButton.BackColor = $ButtonColor
     $Form.Controls.Add($ExportButton)
 
@@ -569,7 +703,7 @@ try {
 }
 catch {
     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-    $logEntry = "[$timestamp] Fejl under oprettelse af ExportButton:`r`n$_`r`n`r`n"
+    $logEntry = "[$timestamp] Fejl under oprettelse af ExportButton:`r`n$_"
 
     # Write the error to the log file
     Add-Content -Path $logfile -Value $logEntry
@@ -583,8 +717,8 @@ try {
     $OpenFolderBtn.Size = New-Object System.Drawing.Size(150, 30)
     $OpenFolderBtn.Text = "Åben Mappe"
     $OpenFolderBtn.BackColor = $ButtonColor
-    $OpenFolderBtn.Visible = $false
-    $OpenFolderBtn.Enabled = $false
+    $OpenFolderBtn.Visible = $false # Change to $true to show initially
+    $OpenFolderBtn.Enabled = $false # Change to $true to enable initially
     $ToolTip.SetToolTip($OpenFolderBtn, "Åben mappen hvor CSV filerne er oprettet")
     
     # Log entry for successful creation of Open Folder button
@@ -594,7 +728,7 @@ try {
 }
 catch {
     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-    $logEntry = "[$timestamp] Fejl under oprettelse af Open Folder Button:`r`n$_`r`n`r`n"
+    $logEntry = "[$timestamp] Fejl under oprettelse af Open Folder Button:`r`n$_"
 
     # Write the error to the log file
     Add-Content -Path $logfile -Value $logEntry
@@ -613,7 +747,7 @@ OpenFolderBtnPosition
 # Add resize event to adjust the Open Folder button position
 $Form.Add_Resize({
         OpenFolderBtnPosition
-})
+    })
      
 # Create cancel button
 Try {
@@ -633,7 +767,7 @@ Try {
 }
 catch {
     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-    $logEntry = "[$timestamp] Fejl under oprettelse af CancelButton:`r`n$_`r`n`r`n"
+    $logEntry = "[$timestamp] Fejl under oprettelse af CancelButton:`r`n$_"
 
     # Write the error to the log file
     Add-Content -Path $logfile -Value $logEntry
@@ -654,14 +788,61 @@ $Form.Add_Resize({
         AdjustCancelButtonPosition
     })
 
+# Create help button
+Try {
+    $HelpButton = New-Object System.Windows.Forms.PictureBox
+    $HelpButton.Size = New-Object System.Drawing.Size(30, 30)
+    $HelpButton.Image = [System.Drawing.SystemIcons]::Question.ToBitmap()
+    $HelpButton.BackColor = $Color
+    $ToolTip.SetToolTip($HelpButton, "Åbn brugervejledning på GitHub")
+    $Form.Controls.Add($HelpButton)
+    
+    # Log entry for successful creation of help button
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $successText = "[$timestamp] HelpButton oprettet uden fejl."
+    Add-Content -Path $logfile -Value $successText
+}
+catch {
+    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+    $logEntry = "[$timestamp] Fejl under oprettelse af HelpButton:`r`n$_"
+
+    # Write the error to the log file
+    Add-Content -Path $logfile -Value $logEntry
+
+    Write-Host "Fejl under oprettelse af HelpButton: $_"
+}
+
+# Create function to open Github
+function HelpButtonClicked {
+    # Åbn brugervejledning på GitHub i standardbrowseren
+    Start-Process "https://github.com/Datalund/LOS_to_CSV/blob/main/README.md"   
+}
+    
+$HelpButton.Add_Click({
+        HelpButtonClicked
+    })
+    
+# Juster positionen for hjælpeknappen
+function AdjustHelpButtonPosition() {
+    $xPosition = $Form.ClientSize.Width - $HelpButton.Width - 10
+    $yPosition = 10
+    $HelpButton.Location = New-Object System.Drawing.Point($xPosition, $yPosition)
+}
+    
+AdjustHelpButtonPosition
+$Form.Add_Resize({
+        AdjustHelpButtonPosition
+    })
+    
+
 # Log entry for end of form creation
-$successText = "-----Slut på tilpasning af Form-----`r`n-----Slut på oprettelse af Form-----`r`n"
+$successText = "-----Slut på tilpasning af Form-----`n-----Slut på oprettelse af Form-----"
 Add-Content -Path $logfile -Value $successText
 
 ############################################################################################ End of setting up the Windows form ############################################################################################
 
 # Log entry for start of filehandling
-$successText = "`n-----Start på håndtering af filer-----"
+$successText = "`n`n-----Start på håndtering af filer-----"
 Add-Content -Path $logfile -Value $successText
 
 # Add click event to cancel button
@@ -702,10 +883,17 @@ $CancelButton.Add_Click({
 
 # Continue the browse button function
 $BrowseButton.Add_Click({
+        $BrowsePath = "\\Kolding.dk\koldfs\ALLE_FAELLES$\Data\D030\"
+        $CreateDynButton.Visible = $false
+        $CreateDynButton.Enabled = $false
+        $ChangeDynButton.Visible = $false
+        $ChangeDynButton.Enabled = $false
+        $DeleteDynButton.Visible = $false
+        $DeleteDynButton.Enabled = $false
         $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
         $OpenFileDialog.Filter = "Excel Files (*.xlsx)|*.xlsx|All Files (*.*)|*.*"
         $OpenFileDialog.Title = "Vælg et LOS ark der skal indlæses"
-        $OpenFileDialog.InitialDirectory = [Environment]::GetFolderPath("Desktop")
+        $OpenFileDialog.InitialDirectory = $BrowsePath
         $OpenFileDialog.CheckFileExists = $true
 
         Clear-StatusLabel
@@ -740,7 +928,11 @@ $BrowseButton.Add_Click({
             $global:OrgChangeCSVName = 'Opdater Org Enhed.csv'
             $global:LederFunkChangeSheet1Name = 'Opdater LederogBrugerfunktioner Update 1.csv'
             $global:LederFunkChangeSheet2Name = 'Opdater LederogBrugerfunktioner Update 2.csv'
+            $global:SAPAChangeSheet1Name = 'Opdater SAPA roller Update 1.csv'
+            $global:SAPAChangeSheet2Name = 'Opdater SAPA roller Update 2.csv'
             $global:UserSheetName = 'Opdater Org identiteter.csv'
+            $global:AcadreCreateCSVName = 'Opret Acadre Enhed.csv'
+            $global:AcadreChangeCSVName = 'Opdater Acadre Enhed.csv'
             $global:roleOwnerSheetName = 'Opdater RoleEjer.csv'
             $global:dlCreateSaveName = 'Opret DL Lister.csv'
             $global:dlChangeSaveName = 'Opdater DL Lister.csv'
@@ -758,6 +950,10 @@ $BrowseButton.Add_Click({
             $global:SaveOrgChangeSheet = Join-Path $CSVSavePath $OrgChangeCSVName
             $global:SavelederogBrugerFunkChangeSheet1 = Join-Path $CSVSavePath $LederFunkChangeSheet1Name
             $global:SavelederogBrugerFunkChangeSheet2 = Join-Path $CSVSavePath $LederFunkChangeSheet2Name
+            $global:SaveSAPAChangeSheet1 = Join-Path $CSVSavePath $SAPAChangeSheet1Name
+            $global:SaveSAPAChangeSheet2 = Join-Path $CSVSavePath $SAPAChangeSheet2Name
+            $global:SaveAcadreCreateSheet = Join-Path $CSVSavePath $AcadreCreateCSVName
+            $global:SaveAcadreChangeSheet = Join-Path $CSVSavePath $AcadreChangeCSVName
             $global:SaveUserSheet = Join-Path $CSVSavePath $UserSheetName
             $global:SaveRoleOwnerSheet = Join-Path $CSVSavePath $roleOwnerSheetName
             $global:SaveDlCreateSheet = Join-Path $CSVSavePath $DlCreateSaveName
@@ -804,7 +1000,7 @@ $BrowseButton.Add_Click({
             
             # Create Excel resources
             $global:Excel = New-Object -ComObject Excel.Application
-            $global:Excel.Visible = $false # �ndres til $true for at vise Excel-arket
+            $global:Excel.Visible = $false # Ændres til $true for at vise Excel-arket
             $global:Excel.DisplayAlerts = $false
 
             $global:Workbook = $global:Excel.Workbooks.Open($TextBox.Text, 0, $true)
@@ -865,7 +1061,7 @@ $ExportButton.Add_Click({
             }
             catch {
                 $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-                $logEntry = "[$timestamp] Fejl under oprettelse af mapper:`r`n$_`r`n`r`n"
+                $logEntry = "[$timestamp] Fejl under oprettelse af mapper:`r`n$_"
 
                 # Write the error to the log file
                 Add-Content -Path $logfile -Value $logEntry
@@ -888,7 +1084,7 @@ $ExportButton.Add_Click({
                 Add-Content -Path $logfile -Value $logEntry
             
                 # Define an array of CSV file paths
-                $csvFiles = @($SaveOrgCreateSheet, $SaveCreateOrgFoldersSheet, $SaveDynTempCreateSheet, $SaveOrgChangeSheet, $SavelederogBrugerFunkChangeSheet1, $SavelederogBrugerFunkChangeSheet2, $SaveDlCreateSheet, $SaveDLChangeSheet, $SaveDynTempChangeSheet, $SaveUserSheet, $SaveRoleOwnerSheet, $SaveDlDeleteSheet, $SaveRenameOrgFoldersSheet)
+                $csvFiles = @($SaveOrgCreateSheet, $SaveOrgChangeSheet, $SavelederogBrugerFunkChangeSheet1, $SavelederogBrugerFunkChangeSheet2, $SaveSAPAChangeSheet1, $SaveSAPAChangeSheet2, $SaveAcadreCreateSheet, $SaveAcadreChangeSheet, $SaveUserSheet, $SaveRoleOwnerSheet, $SaveDlCreateSheet, $SaveDLChangeSheet, $SaveDlDeleteSheet, $SaveCreateOrgFoldersSheet, $SaveRenameOrgFoldersSheet, $SaveDynTempCreateSheet, $SaveDynTempChangeSheet)
 
                 # Define an array to store failed files
                 $failedFiles = @()
@@ -985,8 +1181,8 @@ $ExportButton.Add_Click({
         #$userChangeSheet = $WorkBook.Worksheets | where-object { $_.name -like "Brugere Ændre" }
 
         # Load the WorkSheet for Acadre Create/Change/Delete
-        #$acadreCreateSheet = $WorkBook.Worksheets | where-object { $_.name -like "Acadre Opret" }
-        #$acadreChangeSheet = $WorkBook.Worksheets | where-object { $_.name -like "Acadre Ændre" }
+        $acadreCreateSheet = $WorkBook.Worksheets | where-object { $_.name -like "Acadre Opret" }
+        $acadreChangeSheet = $WorkBook.Worksheets | where-object { $_.name -like "Acadre Ændre" }
         #$acadreDeleteSheet = $WorkBook.Worksheets | where-object { $_.name -like "Acadre Slet" }
 
         # Load the WorkSheet for DL Create/Change/Delete
@@ -1035,7 +1231,39 @@ $ExportButton.Add_Click({
                     $higherOrg = $ws.Cells.Item($i, 4).Value()
                     #$manager = $ws.Cells.Item($i, 6).Value()
                     #$superUser = $ws.Cells.Item($i, 7).Value()
-                    $lokations = $ws.Cells.Item($i, 5).Value()
+                    try {
+                        $originalAdresse = $ws.Cells.Item($i, 5).Value() -replace "^$", "null"
+                        if ($originalAdresse -match ",") {
+                            $originalAdresse = ($originalAdresse -split ",", 2)[0]
+                        }                                                
+                        $adresseInBoth = Compare-Object -ReferenceObject $locationReferenceFile.Name -DifferenceObject $originalAdresse -IncludeEqual | Where-Object { $_.SideIndicator -eq "==" } | Select-Object -ExpandProperty InputObject
+                        if ($adresseInBoth -ne $null) {
+                            $adresseChangeresults = ForEach ($adresse in $adresseInBoth) {
+                                $u = $locationReferenceFile | Where-Object { $_.Name -eq $originalAdresse }
+                    
+                                New-Object -TypeName psobject -Property @{
+                                    "OUID" = $originalAdresse
+                                    "ID" = $u.Id
+                                }
+                            }
+                            # Log a message for successful processing
+                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                            $logEntry = "[$timestamp] Der blev fundet et Match for $originalAdresse i locationReferenceFile"
+                            Add-Content -Path $logfile -Value $logEntry
+                        }
+                        else {
+                            # Log a message for no match found
+                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                            $logEntry = "[$timestamp] !!!!! Der blev ikke fundet et match for $originalAdresse i locationReferenceFile !!!!!"
+                            Add-Content -Path $logfile -Value $logEntry
+                        }
+                    }
+                    catch {
+                        # Log an error message if something went wrong
+                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                        $logEntry = "[$timestamp] Der skete en fejl mens der blev lavet sammenligning af adressen $originalAdresse :`r`n$($_.Exception.Message)"
+                        Add-Content -Path $logfile -Value $logEntry
+                    }
                     if ($name -eq $null) {
                         $Maildomain = $null
                     }
@@ -1064,7 +1292,7 @@ $ExportButton.Add_Click({
             $orgCreateObj | Add-Member -Type NoteProperty -Name 'Org description' -Value $description
             $orgCreateObj | Add-Member -Type NoteProperty -Name Name -Value $name
             $orgCreateObj | Add-Member -Type NoteProperty -Name Management -Value $forvaltning
-            $orgCreateObj | Add-Member -Type NoteProperty -Name Locations -Value $lokations
+            $orgCreateObj | Add-Member -Type NoteProperty -Name Locations -Value $adresseChangeresults.ID
             $orgCreateObj | Add-Member -Type NoteProperty -Name Maildomain -Value $Maildomain
             $orgCreateObj | Add-Member -Type NoteProperty -Name 'Parent OU' -Value $higherOrg
             $orgCreateObj | Add-Member -Type NoteProperty -Name 'OU type' -Value $orgType
@@ -1095,7 +1323,7 @@ $ExportButton.Add_Click({
             }
             catch {
                 $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-                $logEntry = "[$timestamp] Fejl under eksport af Organisationsdata fra fanen $orgSheetName :`r`n$_`r`n"
+                $logEntry = "[$timestamp] Fejl under eksport af Organisationsdata fra fanen $orgSheetName :`r`n$_"
                 # Write the error to the log file
                 Add-Content -Path $logfile -Value $logEntry
             }
@@ -1163,7 +1391,7 @@ $ExportButton.Add_Click({
             }
             catch {
                 $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-                $logEntry = "[$timestamp] Fejl under eksport af Dynamic Template data fra fanen $orgSheetName :`r`n$_`r`n"
+                $logEntry = "[$timestamp] Fejl under eksport af Dynamic Template data fra fanen $orgSheetName :`r`n$_"
                 # Write the error to the log file
                 Add-Content -Path $logfile -Value $logEntry
             }
@@ -1226,7 +1454,7 @@ $ExportButton.Add_Click({
             }
             catch {
                 $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-                $logEntry = "[$timestamp] Fejl under eksport af G-drevsdata fra fanen $driveSheetName :`r`n$_`r`n"
+                $logEntry = "[$timestamp] Fejl under eksport af G-drevsdata fra fanen $driveSheetName :`r`n$_"
                 # Write the error to the log file
                 Add-Content -Path $logfile -Value $logEntry
             }
@@ -1309,13 +1537,147 @@ $ExportButton.Add_Click({
             }
             catch {
                 $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-                $logEntry = "[$timestamp] Fejl under eksport af DL lister fra fanen $orgSheetName :`r`n$_`r`n"
+                $logEntry = "[$timestamp] Fejl under eksport af DL lister fra fanen $orgSheetName :`r`n$_"
                 # Write the error to the log file
                 Add-Content -Path $logfile -Value $logEntry
             }
         }
 
         #### End of CSV file for Org. DL Create for each new org ####
+
+        #### Create a CSV file for Acadre Create ####
+
+        $acadreCreateSheetName = $acadreCreateSheet.name
+        $exportAcadreCreateList = @()
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $acadreCreateSheet) {
+                if ($ws.Cells.Item($i, 1).Value() -ne $null ) {
+                    $Acadrename = $ws.Cells.Item($i, 1).Value()
+                    # Tjek om længden er større end 30
+                    if ($Acadrename.Length -gt 30) {
+                        $Acadrename = $Acadrename.Substring(0, 30)
+                    }
+                    $AcadreDesc = $ws.Cells.Item($i, 1).Value()
+                    $AcadreCreateParentUnit = $ws.Cells.Item($i, 2).Value()
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen værdi i variablen for Acadre oprette"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+            } #End the foreach loop
+
+            $i++    
+
+            # Create acadreCreate with the required properties
+            $acadreCreateObj = New-Object System.Object
+            $acadreCreateObj | Add-Member -Type NoteProperty -Name Navn -Value $Acadrename
+            $acadreCreateObj | Add-Member -Type NoteProperty -Name Beskrivelse -Value $AcadreDesc
+            $acadreCreateObj | Add-Member -Type NoteProperty -Name 'Overliggende enhed' -Value $AcadreCreateParentUnit
+
+            # Add $acadreCreate object to the export list
+            $exportAcadreCreateList += $acadreCreateObj
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        if ($Acadrename -eq $null) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke oprettes nye Acadre enheder. Scriptet fortsætter"
+        }
+        else {
+            try {
+                $exportAcadreCreateList | Export-Csv $global:SaveAcadreCreateSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation
+
+                # Clear the export list
+                $exportAcadreCreateList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nAcadre data fra fanen $acadreCreateSheetName blev eksporteret til CSV filen: $AcadreCreateCSVName"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Acadredata fra fanen $acadreCreateSheetName blev eksporteret korrekt"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            catch {
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Fejl under eksport af Acadredata fra fanen $acadreCreateSheetName :`r`n$_"
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+    
+        #### End of Create a CSV file for Acadre Create ####
+
+            
+        #### Create CSV file for Dynamic Template folders Create ####
+          
+        $exportdynCreateList = @()
+        $i = 2
+
+        # Load information from the worksheet
+        Do {
+            foreach ($ws in $orgCreateSheet) {
+                if ($ws.Cells.Item($i, 3).Value() -ne $null ) {
+                    $dynCreateOrgName = $ws.Cells.Item($i, 3).Value()
+                    $dynCreateOrgunit = $ws.Cells.Item($i, 2).Value() + ' ' + $dynCreateOrgName
+                    $dynCreateOrgForvaltningShort = $ws.Cells.Item($i, 2).Value()
+                    # Define what Org is selected and translate short name to full name
+                    Foreach ($line in $TranslateArr) {
+                        if ($line.ShortName -eq $dynCreateOrgForvaltningShort) {
+                            $dynCreateOrgForvaltning = $line.ForvaltningsName
+                        } #End the if loop
+                    }#End the foreach loop
+                } #End the if loop
+                else {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Der var ingen værdi i variablen for Dynamic Template oprette"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                }#End the else loop
+            } #End the foreach loop
+
+            $i++    
+
+            # Create dynTempCreateObj with the required properties
+            $dynTempCreateObj = New-Object System.Object
+            $dynTempCreateObj | Add-Member -Type NoteProperty -Name Organisationsnavn -Value $dynCreateOrgunit
+            $dynTempCreateObj | Add-Member -Type NoteProperty -Name Afdelingsnavn -Value $dynCreateOrgName
+            $dynTempCreateObj | Add-Member -Type NoteProperty -Name Forvaltningsnavn -Value $dynCreateOrgForvaltning
+
+            # Add $dynTempCreateObj to the export list
+            $exportdynCreateList += $dynTempCreateObj
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+        
+        # Check if export is needed
+        if ($dynCreateOrgunit -eq $null) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke oprettes nye Dynamic Template foldere. Scriptet fortsætter"
+        }
+        else {
+            Try {
+                $exportdynCreateList | Export-Csv $SaveDynTempCreateSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation
+        
+                # Clear the export list
+                $exportdynCreateList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nDynamic Template data fra fanen $orgSheetName blev eksporteret til CSV filen: $DynTempCreateSheetName"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Dynamic Template data fra fanen $orgSheetName blev eksporteret korrekt"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            catch {
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Fejl under eksport af Dynamic Template data fra fanen $orgSheetName :`r`n$_"
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+        
+        #### End of Create CSV file for Dynamic Template folders Create ####
 
 
         #### Continue Funk. DL Create from DL Create Sheet ####
@@ -1392,7 +1754,7 @@ $ExportButton.Add_Click({
             }
             catch {
                 $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-                $logEntry = "[$timestamp] Fejl under eksport af DL lister fra fanen $dlSheetName :`r`n$_`r`n"
+                $logEntry = "[$timestamp] Fejl under eksport af DL lister fra fanen $dlSheetName :`r`n$_"
                 # Write the error to the log file
                 Add-Content -Path $logfile -Value $logEntry
             }
@@ -1472,7 +1834,7 @@ $ExportButton.Add_Click({
                     catch {
                         # Log an error message if something went wrong
                         $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-                        $logEntry = "[$timestamp] Der skete en fejl mens der blev lavet sammenligning af OUID $orginalChangeUnit :`r`n$($_.Exception.Message)`r`n"
+                        $logEntry = "[$timestamp] Der skete en fejl mens der blev lavet sammenligning af OUID $orginalChangeUnit :`r`n$($_.Exception.Message)"
                         Add-Content -Path $logfile -Value $logEntry
                     }
                     
@@ -1538,7 +1900,8 @@ $ExportButton.Add_Click({
         } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
 
         # Check if export is needed
-        if ($exportorgChangeList -eq $null) {
+        $hasValues = $exportorgChangeList | Where-Object { $_.NRID -ne $null -or $_.OUID -ne $null -or $_.ShortName -ne $null -or $_.'Org description' -ne $null -or $_.Name -ne $null -or $_.Management -ne $null -or $_.'Parent OU' -ne $null }
+        if ($hasValues.Count -eq 0) {
             $StatusLabel.SelectionColor = "Green"
             $StatusLabel.SelectedText = "`nDer skal ikke ændres org enheder. Scriptet fortsætter"
         }
@@ -1610,9 +1973,10 @@ $ExportButton.Add_Click({
             $i++    
         
         } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
-        
+
         # Check if export is needed
-        if ($exportorgChangeDLList -eq $null) {
+        $hasValues = $exportorgChangeDLList | Where-Object { $_.Navn -ne $null -or $_.'Nyt navn' -ne $null }
+        if ($hasValues.Count -eq 0) {
             $StatusLabel.SelectionColor = "Green"
             $StatusLabel.SelectedText = "`nDer skal ikke ændres organisatoriske DL lister. Scriptet fortsætter"
         }
@@ -1724,7 +2088,8 @@ $ExportButton.Add_Click({
         } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
 
         # Check if export is needed
-        if ($exportlederFunk1ChangeList -eq $null) {
+        $hasValues = $exportlederFunk1ChangeList | Where-Object { $_.Description -ne $null -or $_.Name -ne $null -or $_.ResourceID -ne $null }
+        if ($hasValues.Count -eq 0) {
             $StatusLabel.SelectionColor = "Green"
             $StatusLabel.SelectedText = "`nDer skal ikke ændres første del af Lederfunktioner. Scriptet fortsætter"
         }
@@ -1835,7 +2200,8 @@ $ExportButton.Add_Click({
         } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
 
         # Check if export is needed
-        if ($exportbrugerAns1ChangeList -eq $null) {
+        $hasValues = $exportbrugerAns1ChangeList | Where-Object { $_.Description -ne $null -or $_.Name -ne $null -or $_.ResourceID -ne $null }
+        if ($hasValues.Count -eq 0) {
             $StatusLabel.SelectionColor = "Green"
             $StatusLabel.SelectedText = "`nDer skal ikke ændres første del af Brugeransvarlig. Scriptet fortsætter"
         }
@@ -1926,17 +2292,18 @@ $ExportButton.Add_Click({
             $i++    
 
             # Create lederFunk2ChangeObj with the required properties
-            $lederFunk2ChangeeObj = New-Object System.Object
-            $lederFunk2ChangeeObj | Add-Member -Type NoteProperty -Name Description -Value $lederFunk2Description
-            $lederFunk2ChangeeObj | Add-Member -Type NoteProperty -Name Name -Value $lederFunk2FullName
-            $lederFunk2ChangeeObj | Add-Member -Type NoteProperty -Name ResourceID -Value $lederFunk2ShortName
+            $lederFunk2ChangeObj = New-Object System.Object
+            $lederFunk2ChangeObj | Add-Member -Type NoteProperty -Name Description -Value $lederFunk2Description
+            $lederFunk2ChangeObj | Add-Member -Type NoteProperty -Name Name -Value $lederFunk2FullName
+            $lederFunk2ChangeObj | Add-Member -Type NoteProperty -Name ResourceID -Value $lederFunk2ShortName
 
             # Add $lederFunk2ChangeObj to the export list
-            $exportlederFunk2ChangeList += $lederFunk2ChangeeObj
+            $exportlederFunk2ChangeList += $lederFunk2ChangeObj
         } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
 
         # Check if export is needed
-        if ($exportlederFunk2ChangeList -eq $null) {
+        $hasValues = $exportlederFunk2ChangeList | Where-Object { $_.Description -ne $null -or $_.Name -ne $null -or $_.ResourceID -ne $null }
+        if ($hasValues.Count -eq 0) {
             $StatusLabel.SelectionColor = "Green"
             $StatusLabel.SelectedText = "`nDer skal ikke ændres anden del af Lederfunktioner. Scriptet fortsætter"
         }
@@ -2018,7 +2385,7 @@ $ExportButton.Add_Click({
                 } #End the if loop
                 else {
                     $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
-                    $logEntry = "[$timestamp] Der var ingen v�rdi i anden variabel for Brugeransvarlig �ndre"
+                    $logEntry = "[$timestamp] Der var ingen værdi i anden variabel for Brugeransvarlig ændre"
                     # Write the success message to the log file
                     Add-Content -Path $logfile -Value $logEntry
                 }
@@ -2037,7 +2404,8 @@ $ExportButton.Add_Click({
         } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
 
         # Check if export is needed
-        if ($exportbrugerAns2ChangeList -eq $null) {
+        $hasValues = $exportbrugerAns2ChangeList | Where-Object { $_.Description -ne $null -or $_.Name -ne $null -or $_.ResourceID -ne $null }
+        if ($hasValues.Count -eq 0) {
             $StatusLabel.SelectionColor = "Green"
             $StatusLabel.SelectedText = "`nDer skal ikke ændres anden del af Brugeransvarlig. Scriptet fortsætter"
         }
@@ -2068,16 +2436,213 @@ $ExportButton.Add_Click({
         }
 
         #### End of Brugeransvarlig Change File 2####
+
+        #### Create a CSV file for SAPA Change files####
+        $exportSAPA1ChangeList = @()
+        $exportSAPA2ChangeList = @()
+        $SAPAChangeList = @()
+        $i = 2
+        $SAPAlederStartTxt = "JFR SAPA LEDER LÆSE - "
+        $SAPAsagStartTxt = "JFR SAPA SAGSBEHANDLER LÆSE - "
+        $SAPAlederStartDesc = "Jobfunktionsrolle til SAPA Leder Læse - "
+        $SAPAsagStartDesc = "Jobfunktionsrolle til SAPA Sagsbehandler Læse - "
+                    
+        # Load information from the worksheet
+        Do {
+            # Initialiser midlertidig liste
+            foreach ($ws in $orgChangeSheet) {
+                $oldSAPAShortname = $ws.Cells.Item($i, 1).Value()
+                $oldSAPALongname = $ws.Cells.Item($i, 3).Value()
+                $oldSAPALederFullName = $SAPAlederStartTxt + $oldSAPAShortname + " " + $oldSAPALongname
+                $oldSAPASagFullName = $SAPAsagStartTxt + $oldSAPAShortname + " " + $oldSAPALongname
+                $resourceIDSAPANewShortName = $null
+                $resourceIDSAPANewLongName = $null
+                $resourceIDSAPALederNewFullName = $null
+                $resourceIDSAPASagNewFullName = $null
+                $descriptionSAPALederNew = $null
+                $descriptionSAPASagNew = $null
+                
+                try {
+                    if (($ws.Cells.Item($i, 1).Value() -ne $null) -and ($ws.Cells.Item($i, 9).Value() -ne $null) -and ($ws.Cells.Item($i, 11).Value() -eq $null)) {
+                        $resourceIDSAPANewShortName = $ws.Cells.Item($i, 9).Value()
+                        $resourceIDSAPALederNewFullName = $SAPAlederStartTxt + $resourceIDSAPANewShortName + " " + $oldSAPALongname
+                        $resourceIDSAPASagNewFullName = $SAPAsagStartTxt + $resourceIDSAPANewShortName + " " + $oldSAPALongname
+                        $descriptionSAPALederNew = $SAPAlederStartDesc + $resourceIDSAPANewShortName + " " + $oldSAPALongname
+                        $descriptionSAPASagNew = $SAPAsagStartDesc + $resourceIDSAPANewShortName + " " + $oldSAPALongname
+                
+                        # Opret SAPAlederChangeeObj med de nødvendige egenskaber
+                        $SAPAlederChangeeObj = New-Object PSCustomObject
+                        $SAPAlederChangeeObj | Add-Member -Type NoteProperty -Name Name -Value $oldSAPALederFullName
+                        $SAPAlederChangeeObj | Add-Member -Type NoteProperty -Name ResourceID -Value $resourceIDSAPALederNewFullName
+                        $SAPAlederChangeeObj | Add-Member -Type NoteProperty -Name Description -Value $descriptionSAPALederNew
+
+                        # Opret SAPAsagChangeeObj med de nødvendige egenskaber
+                        $SAPAsagChangeeObj = New-Object PSCustomObject
+                        $SAPAsagChangeeObj | Add-Member -Type NoteProperty -Name Name -Value $oldSAPASagFullName
+                        $SAPAsagChangeeObj | Add-Member -Type NoteProperty -Name ResourceID -Value $resourceIDSAPASagNewFullName
+                        $SAPAsagChangeeObj | Add-Member -Type NoteProperty -Name Description -Value $descriptionSAPASagNew
         
+                        # Tilføj objektet til den midlertidige liste
+                        $SAPAChangeList += $SAPAlederChangeeObj
+                        $SAPAChangeList += $SAPAsagChangeeObj
+                    }
+                }
+                catch{
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Fejl under behandling af række $i :`r`n$_"
+                    # Write the error to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+
+                    # Fortsæt behandlingen af de næste rækker
+                    continue
+                }
+                
+                try {
+                    if (($ws.Cells.Item($i, 1).Value() -ne $null) -and ($ws.Cells.Item($i, 11).Value() -ne $null) -and ($ws.Cells.Item($i, 9).Value() -eq $null)){
+                        $resourceIDSAPANewLongName = $ws.Cells.Item($i, 11).Value()
+                        $resourceIDSAPALederNewFullName = $SAPAlederStartTxt + $oldSAPAShortname + " " + $resourceIDSAPANewLongName
+                        $resourceIDSAPASagNewFullName = $SAPAsagStartTxt + $oldSAPAShortname + " " + $resourceIDSAPANewLongName
+                        $descriptionSAPALederNew = $SAPAlederStartDesc + $oldSAPAShortname + " " + $resourceIDSAPANewLongName
+                        $descriptionSAPASagNew = $SAPAsagStartDesc + $oldSAPAShortname + " " + $resourceIDSAPANewLongName
+    
+                        # Opret SAPAlederChangeeObj med de nødvendige egenskaber
+                        $SAPAlederChangeeObj = New-Object PSCustomObject
+                        $SAPAlederChangeeObj | Add-Member -Type NoteProperty -Name Name -Value $oldSAPALederFullName
+                        $SAPAlederChangeeObj | Add-Member -Type NoteProperty -Name ResourceID -Value $resourceIDSAPALederNewFullName
+                        $SAPAlederChangeeObj | Add-Member -Type NoteProperty -Name Description -Value $descriptionSAPALederNew
+            
+                        # Opret SAPAsagChangeeObj med de nødvendige egenskaber
+                        $SAPAsagChangeeObj = New-Object PSCustomObject
+                        $SAPAsagChangeeObj | Add-Member -Type NoteProperty -Name Name -Value $oldSAPASagFullName
+                        $SAPAsagChangeeObj | Add-Member -Type NoteProperty -Name ResourceID -Value $resourceIDSAPASagNewFullName
+                        $SAPAsagChangeeObj | Add-Member -Type NoteProperty -Name Description -Value $descriptionSAPASagNew
+                    
+                        # Tilføj objektet til den midlertidige liste
+                        $SAPAChangeList += $SAPAlederChangeeObj
+                        $SAPAChangeList += $SAPAsagChangeeObj
+                    }            
+                }
+                catch {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Fejl under behandling af række $i :`r`n$_"
+                    # Write the error to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+
+                    # Fortsæt behandlingen af de næste rækker
+                    continue
+                }
+                try {
+                    if (($ws.Cells.Item($i, 1).Value() -ne $null) -and ($ws.Cells.Item($i, 9).Value() -ne $null) -and ($ws.Cells.Item($i, 11).Value() -ne $null)){
+                        $resourceIDSAPANewShortName = $ws.Cells.Item($i, 9).Value()
+                        $resourceIDSAPANewLongName = $ws.Cells.Item($i, 11).Value()
+                        $resourceIDSAPALederNewFullName = $SAPAlederStartTxt + $resourceIDSAPANewShortName + " " + $resourceIDSAPANewLongName
+                        $resourceIDSAPASagNewFullName = $SAPAsagStartTxt + $resourceIDSAPANewShortName + " " + $resourceIDSAPANewLongName
+                        $descriptionSAPALederNew = $SAPAlederStartDesc + $resourceIDSAPANewShortName + " " + $resourceIDSAPANewLongName
+                        $descriptionSAPASagNew = $SAPAsagStartDesc + $resourceIDSAPANewShortName + " " + $resourceIDSAPANewLongName
+    
+                        # Opret SAPAlederChangeeObj med de nødvendige egenskaber
+                        $SAPAlederChangeeObj = New-Object PSCustomObject
+                        $SAPAlederChangeeObj | Add-Member -Type NoteProperty -Name Name -Value $oldSAPALederFullName
+                        $SAPAlederChangeeObj | Add-Member -Type NoteProperty -Name ResourceID -Value $resourceIDSAPALederNewFullName
+                        $SAPAlederChangeeObj | Add-Member -Type NoteProperty -Name Description -Value $descriptionSAPALederNew
+            
+                        # Opret SAPAsagChangeeObj med de nødvendige egenskaber
+                        $SAPAsagChangeeObj = New-Object PSCustomObject
+                        $SAPAsagChangeeObj | Add-Member -Type NoteProperty -Name Name -Value $oldSAPASagFullName
+                        $SAPAsagChangeeObj | Add-Member -Type NoteProperty -Name ResourceID -Value $resourceIDSAPASagNewFullName
+                        $SAPAsagChangeeObj | Add-Member -Type NoteProperty -Name Description -Value $descriptionSAPASagNew
+                    
+                        # Tilføj objektet til den midlertidige liste
+                        $SAPAChangeList += $SAPAlederChangeeObj
+                        $SAPAChangeList += $SAPAsagChangeeObj
+                    }        
+                }
+                catch {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Fejl under behandling af række $i :`r`n$_"
+                    # Write the error to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+
+                    # Fortsæt behandlingen af de næste rækker
+                    continue
+                }
+            } # End foreach loop
+
+            $i++
+        } While ($ws.Cells.Item($i, 1).Value() -ne $null) # End the Do loop                    
+                    
+        # Check if export is needed
+        $hasValues = $SAPAChangeList | Where-Object { $_.Description -ne $null -or $_.Name -ne $null -or $_.ResourceID -ne $null }
+        if ($hasValues.Count -eq 0) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke ændres første del af SAPA roller. Scriptet fortsætter"
+        }
+        else {
+            # Check if the new file names matches any file in the failedFiles array
+            $SAPAFiles = $SaveSAPAChangeSheet1, $SaveSAPAChangeSheet2
+            # File name matches a failed file, skip creation
+            if ($failedFiles -contains $SAPAFiles) {
+                $StatusLabel.SelectionColor = "Red"
+                $StatusLabel.SelectedText = "`nFilerne $SAPAChangeSheet1Name og $SAPAChangeSheet2Name blev ikke oprettet, da de tidligere versioner af filerne ikke kunne slettes."
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filerne $SAPAChangeSheet1Name og $SAPAChangeSheet2Name blev ikke oprettet, da de tidligere versioner af filerne ikke kunne slettes."
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            else {
+                # Check if there is an existing SAPA role to change
+                $SAPAInBoth = Compare-Object -ReferenceObject $SAPASystem."Resource ID" -DifferenceObject $SAPAChangeList.Name -IncludeEqual | Where-Object { $_.SideIndicator -eq "==" } | Select-Object -ExpandProperty InputObject
+
+                if ($SAPAInBoth -ne $null) {
+                    ForEach ($SAPARole in $SAPAInBoth) {
+                        $MatchingObject = $SAPAChangeList | Where-Object { $_.Name -eq $SAPARole }
+                        if ($MatchingObject -ne $null) {
+                            $exportSAPA1ChangeList += $MatchingObject
+                            $exportSAPA2ChangeList += $MatchingObject
+                        }
+                        # Log a message for successful processing
+                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                        $logEntry = "[$timestamp] Der blev fundet et Match for $MatchingObject i SAPAReferenceFile"
+                        Add-Content -Path $logfile -Value $logEntry
+                    }
+                    # Export the first file for changing SAPA roles
+                    $exportSAPA1ChangeList = $exportSAPA1ChangeList  | Where-Object ResourceID -NE $null
+                    $exportSAPA1ChangeList | Export-Csv $SaveSAPAChangeSheet1 -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation
+                    $exportSAPA1ChangeList = @()
+                    # Export the second file for changing SAPA roles
+                    $exportSAPA2ChangeList = $exportSAPA2ChangeList  | Where-Object ResourceID -NE $null
+                    $exportSAPA2ChangeList = $exportSAPA2ChangeList  | Select-Object Description, @{Name='Name'; Expression={$_.ResourceID}}
+                    $exportSAPA2ChangeList | Export-Csv $SaveSAPAChangeSheet2 -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation
+                    $exportSAPA2ChangeList = @()
+                    # Print result in Status box
+                    $StatusLabel.SelectionColor = "Green"
+                    $StatusLabel.SelectedText = "`nFørste del af SAPA rolledata fra fanen $orgChangeSheetName blev eksporteret til CSV filen: $SAPAChangeSheet1Name"
+                    $StatusLabel.SelectedText = "`nAnden del af SAPA rolledata fra fanen $orgChangeSheetName blev eksporteret til CSV filen: $SAPAChangeSheet2Name"
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] Filen $SAPAChangeSheet1Name blev oprettet korrekt"
+                    # Write the success message to the log file
+                    Add-Content -Path $logfile -Value $logEntry
+                    }                
+                else {
+                    # Log a message for no match found
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $logEntry = "[$timestamp] !!!!! Der blev ikke fundet et match i SAPAReferenceFile !!!!!"
+                    Add-Content -Path $logfile -Value $logEntry
+                }
+            }
+        }
+                    
+        #### End of Create a CSV file for SAPA Change files####   
+                            
+                            
         #### Change Dynamic Template folders ####
-        # Denne sektion skal skrives om s� der kun tages h�jde for org enheder, der faktisk skifter navn og ikke alle entries i Org �ndre fanen. Omskrivning p�begyndt den 02/06-2023
         $exportdynChangeList = @()
         $i = 2
 
         # Load information from the worksheet
         Do {
             foreach ($ws in $orgChangeSheet) {
-                if ($ws.Cells.Item($i, 1).Value() -ne $null ) {
+                if (![string]::IsNullOrEmpty($ws.Cells.Item($i, 1).Value())) {
                     if ($ws.Cells.Item($i, 2).Value() -ne $null -and $ws.Cells.Item($i, 10).Value() -ne $null -or $ws.Cells.Item($i, 11).Value() -ne $null) {
                         $dynChangeOrgForvaltningShort = $ws.Cells.Item($i, 2).Value()
                     }
@@ -2141,8 +2706,6 @@ $ExportButton.Add_Click({
                 }
             } #End the foreach loop
 
-            $i++    
-
             # Create dynTempCreateObj with the required properties
             $dynTempChangeObj = New-Object System.Object
             $dynTempChangeObj | Add-Member -Type NoteProperty -Name Organisationsnavn -Value $dynChangeOrgunit
@@ -2152,10 +2715,14 @@ $ExportButton.Add_Click({
 
             # Add $dynTempCreateObj to the export list
             $exportdynChangeList += $dynTempChangeObj
+
+            $i++    
+
         } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
 
         # Check if export is needed
-        if ($exportdynChangeList -eq $null) {
+        $hasValues = $exportdynChangeList | Where-Object { $_.Organisationsnavn -ne $null }
+        if ($hasValues.Count -eq 0) {
             $StatusLabel.SelectionColor = "Green"
             $StatusLabel.SelectedText = "`nDer skal ikke ændres Dynamic Template foldere. Scriptet fortsætter"
         }
@@ -2184,6 +2751,82 @@ $ExportButton.Add_Click({
         }    
 
         #### End of Change Dynamic Template folders ####
+
+
+        #### Create a CSV file for Acadre Change ####
+        $exportAcadreChangeList = @()
+        $acadreChangeSheetName = $acadreChangeSheet.name
+        $i = 2
+
+        # Load information from the worksheet
+        do {
+            foreach ($ws in $acadreChangeSheet) {
+                if ($ws.Cells.Item($i, 1) -ne $null) {
+                    $acadreChangeOldName = $ws.Cells.Item($i, 1).Value()
+
+                    # Tjek om der er en værdi i celle $i, 2
+                    if ($ws.Cells.Item($i, 2).Value() -ne $null) {
+                        $acadreChangeNewName = $ws.Cells.Item($i, 2).Value()
+                        $acadreChangeNewDesc = $ws.Cells.Item($i, 2).Value()
+
+                        # Tjek om længden er over 30
+                        if ($acadreChangeNewName.Length -gt 30) {
+                            $acadreChangeNewName = $acadreChangeNewName.Substring(0, 30)
+                        }
+                    } else {
+                        $acadreChangeNewName = ""
+                        $acadreChangeNewDesc = ""
+                    }                    
+
+                    $acadreChangeNewParent = $ws.Cells.Item($i, 3).Value()
+                } # End the if loop
+            } # End the foreach loop
+
+            $i++    
+
+            # Create acadreChangeObj with the required properties
+            $acadreChangeObj = New-Object System.Object
+            $acadreChangeObj | Add-Member -Type NoteProperty -Name Navn -Value $acadreChangeOldName
+            $acadreChangeObj | Add-Member -Type NoteProperty -Name 'Nyt navn' -Value $acadreChangeNewName
+            $acadreChangeObj | Add-Member -Type NoteProperty -Name 'Ny beskrivelse' -Value $acadreChangeNewDesc
+            $acadreChangeObj | Add-Member -Type NoteProperty -Name 'Ny Overliggende enhed' -Value $acadreChangeNewParent
+
+            # Add $acadreChangeObj to the export list
+            $exportAcadreChangeList += $acadreChangeObj
+        } while ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
+
+        # Check if export is needed
+        $hasValues = $exportAcadreChangeList | Where-Object { $_.Navn -ne $null }
+        if ($hasValues.Count -eq 0) {
+            $StatusLabel.SelectionColor = "Green"
+            $StatusLabel.SelectedText = "`nDer skal ikke ændres i Acadre. Scriptet fortsætter"
+        }
+        else {
+            # Check if the new file name matches any file in the failedFiles array
+            if ($failedFiles -contains $SaveAcadreChangeSheet) {
+                # File name matches a failed file, skip creation
+                $StatusLabel.SelectionColor = "Red"
+                $StatusLabel.SelectedText = "`nFilen $AcadreChangeCSVName blev ikke oprettet, da den tidligere version af filen ikke kunne slettes."
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $AcadreChangeCSVName blev ikke oprettet da den tidligere version af filen ikke kunne slettes."
+                # Write the error to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+            else {
+                # File name does not match any failed file, proceed with creation    
+                $exportAcadreChangeList | Export-Csv $SaveAcadreChangeSheet -Encoding $Encoding -NoClobber -Delimiter $Delimiter -NoTypeInformation
+                $exportAcadreChangeList = @()
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.SelectedText = "`nAcadre data fra fanen $acadreChangeSheetName blev eksporteret til CSV filen: $AcadreChangeCSVName"
+                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                $logEntry = "[$timestamp] Filen $AcadreChangeCSVName blev oprettet korrekt"
+                # Write the success message to the log file
+                Add-Content -Path $logfile -Value $logEntry
+            }
+        }
+
+
+        #### End of Acadre Change ####
 
 
         #### Create a CSV file for Drive Change ####
@@ -2225,7 +2868,8 @@ $ExportButton.Add_Click({
         } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
 
         # Check if export is needed
-        if ($exportDriveChangeList -eq $null) {
+        $hasValues = $exportDriveChangeList | Where-Object { $_.Forvaltning -ne $null -or $_.Mappenavn -ne $null }
+        if ($hasValues.Count -eq 0) {
             $StatusLabel.SelectionColor = "Green"
             $StatusLabel.SelectedText = "`nDer skal ikke ændres G-drev. Scriptet fortsætter"
         }
@@ -2514,10 +3158,12 @@ $ExportButton.Add_Click({
             $exportDLChangeList += $dlChangeObj
         } While ($ws.Cells.Item($i, 1).Value() -ne $null) #End the Do loop
 
+
         # Check if export is needed
-        if ($dlChangeElements -eq $null) {
+        $hasValues = $dlChangeElements | Where-Object { $_.Navn -ne $null }
+        if ($hasValues.Count -eq 0) {
             $StatusLabel.SelectionColor = "Green"
-            $StatusLabel.SelectedText = "`nDer skal ikke ændres DL lister. Scriptet fortsætter"
+            $StatusLabel.SelectedText = "`nDer skal ikke ændres Funktions DL Lister. Scriptet fortsætter"
         }
         else {
             # Check if the new file name matches any file in the failedFiles array
@@ -2545,25 +3191,12 @@ $ExportButton.Add_Click({
         
         #### End of Continue Role owner change in Mailbox Sheet ####
 
-        # Call the LimitFormSizeAndPosition function to ensure the form stays within screen boundaries
-        LimitFormSizeAndPosition
 
-        # Show the CSV exported dialog          
-        [System.Windows.Forms.MessageBox]::Show("Eksport til CSV fuldført!")
-        
-        # Show Open Folder button and Add Click event to it
-        $OpenFolderBtn.Visible = $true
-        $OpenFolderBtn.Add_Click({
-                Invoke-Item $global:CSVSavePath
-            })
+        ############################################################################################ End of Change phase - Starting Delete phase ############################################################################################
 
-        $OpenFolderBtn.Enabled = $true
-        $CancelButton.Text = "Luk"
 
-        $logEntry = "`r`n`r`n-----Slut på oprettelse af CSV filer for ændring af data-----"
-        # Write the success message to the log file
-        Add-Content -Path $logfile -Value $logEntry
-        
+        ############################################################################################ End of Delete phase - Setting up execution buttons  ############################################################################################
+
         #Close Excel after creating CSV files
         try {
             if ($Excel -ne $null -and $global:Workbook -ne $null) {
@@ -2594,8 +3227,1426 @@ $ExportButton.Add_Click({
             [System.GC]::Collect()
             [System.GC]::WaitForPendingFinalizers()
         }
+        
+        # Call the LimitFormSizeAndPosition function to ensure the form stays within screen boundaries
+        LimitFormSizeAndPosition
 
+        # Show the CSV exported dialog
+        $result = [System.Windows.Forms.MessageBox]::Show("Eksport til CSV fuldført!", "CSV filer oprettet", "OK", "Information")
 
+        if ($result -eq "OK") {
+            $ExportButton.Visible = $false # Changed to $false to hide the button after CSV files are created. This is done to prevent errors if the button i pushed again.
+        }
+
+        #Enable and setup DynTemp Create button    
+        if (Test-Path $SaveDynTempCreateSheet) {
+            # Show Create Dynamic Template Button button and enable it
+            $CreateDynButton.Visible = $true # Changed to $true to show button
+            $CreateDynButton.Enabled = $true # Changed to $true to enable button
+        }
+
+        # Function to adjust Dynamic Template create button position
+        function CreateDynButtonPosition() {
+            $buttonX = $SheetLabel.Left
+            $buttonY = $SheetLabel.Top + $SheetLabel.Height + 20
+            $CreateDynButton.Location = New-Object System.Drawing.Point($buttonX, $buttonY)
+        }
+
+        # Call the function to adjust the initial position of the Create Dynamic Template button
+        CreateDynButtonPosition
+
+        # Add resize event to adjust the Create Dynamic Template button position
+        $SheetLabel.add_SizeChanged({
+                CreateDynButtonPosition
+            })
+
+        #Enable and setup DynTemp Change button    
+        if (Test-Path $SaveDynTempChangeSheet) {
+            # Show Change Dynamic Template Button button and enable it
+            $ChangeDynButton.Visible = $true # Changed to $true to show button
+            $ChangeDynButton.Enabled = $true # Changed to $true to enable button
+        }
+
+        # Function to adjust Dynamic Template change button position
+        function ChangeDynButtonPosition() {
+            if ($CreateDynButton.Visible -eq $true) {
+                $buttonX = $SheetLabel.Left + 150
+            }
+            else {
+                $buttonX = $SheetLabel.Left
+            }
+            $buttonY = $SheetLabel.Top + $SheetLabel.Height + 20
+            $ChangeDynButton.Location = New-Object System.Drawing.Point($buttonX, $buttonY)
+        }
+
+        # Call the function to adjust the initial position of the Change Dynamic Template button
+        ChangeDynButtonPosition
+
+        # Call the function to adjust the initial position of the Dynamic Template change Template button
+        ChangeDynButtonPosition
+
+        # Add resize event to adjust the Dynamic Template change button position
+        $SheetLabel.add_SizeChanged({
+                ChangeDynButtonPosition
+            })
+
+        #Enable and setup DynTemp Delete button    
+        if (Test-Path $SaveDynTempCreateSheet) {
+            # Show DynTemp Delete Button and enable it
+            $DeleteDynButton.Visible = $true # Changed to $true to show button
+            $DeleteDynButton.Enabled = $true # Changed to $true to enable button
+        }
+    
+        # Function to adjust DynTemp Delete position
+        function DeleteDynButtonPosition() {
+            if ($CreateDynButton.Visible -eq $true -and $ChangeDynButton.Visible -eq $true) {
+                $buttonX = $SheetLabel.Left
+                $buttonY = $SheetLabel.Top + $SheetLabel.Height + 60
+            }
+            elseif ($CreateDynButton.Visible -ne $true -and $ChangeDynButton.Visible -eq $true) {
+                $buttonX = $SheetLabel.Left + 170
+                $buttonY = $SheetLabel.Top + $SheetLabel.Height + 20
+            }
+            elseif ($CreateDynButton.Visible -eq $true -and $ChangeDynButton.Visible -ne $true) {
+                $buttonX = $SheetLabel.Left + 150
+                $buttonY = $SheetLabel.Top + $SheetLabel.Height + 20
+            }
+            else {
+                $buttonX = $SheetLabel.Left
+                $buttonY = $SheetLabel.Top + $SheetLabel.Height + 20
+            }
+            $DeleteDynButton.Location = New-Object System.Drawing.Point($buttonX, $buttonY)
+        }
+    
+        # Call the function to adjust the initial position of the Dynamic Template Delete button
+        DeleteDynButtonPosition
+    
+        # Call the function to adjust the initial position of the Dynamic Template Delete Template button
+        DeleteDynButtonPosition
+    
+        # Add resize event to adjust the Dynamic Template Delete button position
+        $SheetLabel.add_SizeChanged({
+                DeleteDynButtonPosition
+            })
+    
+        # Show Open Folder button and Add Click event to it
+        $OpenFolderBtn.Visible = $true
+        $OpenFolderBtn.Add_Click({
+                Invoke-Item $global:CSVSavePath
+            })
+
+        $OpenFolderBtn.Enabled = $true
+        $CancelButton.Text = "Luk"
+
+        $logEntry = "-----Slut på oprettelse af CSV filer for ændring af data-----"
+        # Write the success message to the log file
+        Add-Content -Path $logfile -Value $logEntry
+
+        # Add click event to Create Dynamic Template button
+        $CreateDynButton.Add_Click({
+                Clear-StatusLabel
+                $StatusLabel.SelectionFont = New-Object System.Drawing.Font($Font, [System.Drawing.FontStyle]::Bold)
+                $StatusLabel.SelectedText = "Status:`n"
+                $StatusLabel.SelectedText = "LOS ark indlæses`r`n"
+                $StatusLabel.SelectedText = "Arket $global:FolderName er indlæst og klar til yderlig håndtering`r`n"
+                $StatusLabel.SelectedText = "Dynamic Template data fra arket $global:FolderName bliver nu behandlet:`r`n"       
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.AppendText("`n`nOpretter nye Dynamic Template mapper")
+                $logEntry = "`n`n-----Start på oprettelse af Dynamic Template mapper og filer-----"
+                Add-Content -Path $logFile -Value $logEntry
+            
+                # Importer CSV-filen for DynCreate
+                $dynCreateData = Import-Csv $SaveDynTempCreateSheet -Delimiter ";"
+                $dynTempArray = Get-ChildItem -Path $dynTempDir -Directory
+
+                # Gennemløb hvert element i CSV-dataene
+                foreach ($row in $dynCreateData) {
+                    # Hent mappenavne fra CSV-rækken
+                    $DynFolderName = $row.Organisationsnavn
+
+                    try {
+                        # Kontroller om der eksisterer en mappe med det samme navn
+                        $folder = $dynTempArray | Where-Object { $_.Name -eq $DynFolderName }
+                        if ($folder) {
+                            $StatusLabel.SelectionColor = "Orange"
+                            $StatusLabel.AppendText("`n`nDynamic Template mappen $DynFolderName findes allerede og bliver ikke opdateret")
+                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                            $logEntry = "[$timestamp] Dynamic Template folderen $DynFolderName findes allerede"
+                            Add-Content -Path $logFile -Value $logEntry                    
+                        }
+                        else {
+                            try {
+                                # Generér den nye sti og navn for mappen
+                                if ([string]::IsNullOrEmpty($DynFolderName)) {
+                                    # Håndter tom $DynFolderName
+                                    $StatusLabel.SelectionColor = "Red"
+                                    $StatusLabel.AppendText("`nTomt mappenavn. Oprettelse springes over.")
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "[$timestamp] Fejlmeddelelse: Tomt mappenavn"
+                                    Add-Content -Path $logFile -Value $logEntry
+                                }
+                                else {
+                                    # Generér den nye sti og navn for mappen
+                                    $newFolderPath = Join-Path $dynTempDir $DynFolderName
+                                                      
+                                    # Opret den nye mappe
+                                    New-Item -Path $newFolderPath -ItemType Directory | Out-Null
+                                    $StatusLabel.SelectionColor = "Green"
+                                    $StatusLabel.AppendText("`n`nFølgende nye Dynamic Template mappe er oprettet: ")
+                                    $StatusLabel.SelectionColor = "Black"
+                                    $StatusLabel.AppendText($DynFolderName)
+
+                                    # Log oprettelsen af den nye mappe
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "[$timestamp] Ny Dynamic Template mappe er oprettet: $DynFolderName"
+                                    Add-Content -Path $logFile -Value $logEntry
+                                }
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen: $DynFolderName")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse: $($_.Exception.Message)"
+                                Add-Content -Path $logFile -Value $logEntry
+                            }
+                        
+                            try {
+                                # Opret mappen "Afdelingsnavn" inde i den nye mappe
+                                $afdNavnFolderPath = Join-Path $newFolderPath "Afdelingsnavn"
+                                New-Item -Path $afdNavnFolderPath -ItemType Directory | Out-Null
+                                # $StatusLabel.SelectionColor = "Green"
+                                # $StatusLabel.AppendText("`nMappen 'Afdelingsnavn' er oprettet i Dynamic Template mappen: $DynFolderName ")
+                        
+                                # Log oprettelsen af mappen "Afdelingsnavn"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Afdelingsnavn"
+                                Add-Content -Path $logFile -Value $logEntry
+                        
+                                try {
+                                    # Opdater eller opret tekstfilen Afdelingsnavn.txt med UTF8-BOM kodning
+                                    $afdNavnFilePath = Join-Path $afdNavnFolderPath "Afdelingsnavn.txt"
+                                    $newAfdNavn = $row.Afdelingsnavn
+                                    $currentAfdNavn = ""
+                                    if (Test-Path $afdNavnFilePath) {
+                                        $currentAfdNavn = Get-Content -Path $afdNavnFilePath
+                                    }
+                        
+                                    if ($newAfdNavn -ne $currentAfdNavn) {
+                                        $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                        [System.IO.File]::WriteAllText($afdNavnFilePath, $newAfdNavn, $utf8BomEncoder)
+                                        # $StatusLabel.SelectionColor = "Green"
+                                        # $StatusLabel.AppendText("`nTekstfilen Afdelingsnavn.txt er blevet oprettet med værdien: ")
+                                        # $StatusLabel.SelectionColor = "Black"
+                                        # $StatusLabel.AppendText($newAfdNavn)
+                                    }
+                                }
+                                catch {
+                                    $StatusLabel.SelectionColor = "Orange"
+                                    $StatusLabel.AppendText("`nDer opstod en fejl under opdateringen af tekstfilen Afdelingsnavn.")
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "`n[$timestamp] Fejlmeddelelse (opdatering af tekstfil): $($_.Exception.Message)"
+                                    Add-Content -Path $logFile -Value $logEntry
+                                }
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen Afdelingsnavn.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe): $($_.Exception.Message)"
+                                Add-Content -Path $logFile -Value $logEntry
+                            }
+                        
+                            try {
+                                # Opret mappen "Bundgrafik" inde i den nye mappe
+                                $bundgfxFolderPath = Join-Path $newFolderPath "Bundgrafik"
+                                New-Item -Path $bundgfxFolderPath -ItemType Directory | Out-Null
+                        
+                                # Log oprettelsen af mappen "Bundgrafik"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Bundgrafik"
+                                Add-Content -Path $logFile -Value $logEntry
+                        
+                                # $StatusLabel.SelectionColor = "Green"
+                                # $StatusLabel.AppendText("`nMappen 'Bundgrafik' er oprettet i Dynamic Template mappen: $DynFolderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Bundgrafik'.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - Bundgrafik): $($_.Exception.Message)"
+                                Add-Content -Path $logFile -Value $logEntry
+                            }
+                        
+                            try {
+                                # Opret mappen "EAN" inde i den nye mappe
+                                $eanNavnFolderPath = Join-Path $newFolderPath "EAN"
+                                New-Item -Path $eanNavnFolderPath -ItemType Directory | Out-Null
+                                # $StatusLabel.SelectionColor = "Green"
+                                # $StatusLabel.AppendText("`nMappen 'EAN' er oprettet i Dynamic Template mappen: $DynFolderName ")
+                        
+                                # Log oprettelsen af mappen "EAN"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: EAN"
+                                Add-Content -Path $logFile -Value $logEntry
+                        
+                                try {
+                                    # Opdater eller opret tekstfilen EAN.txt med UTF8-BOM kodning
+                                    $eanNavnFilePath = Join-Path $eanNavnFolderPath "EAN.txt"
+                                    $currentEAN = ""
+                        
+                                    if (!(Test-Path $eanNavnFilePath)) {
+                                        $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                        [System.IO.File]::WriteAllText($eanNavnFilePath, $currentEAN, $utf8BomEncoder)
+                                        # $StatusLabel.SelectionColor = "Green"
+                                        # $StatusLabel.AppendText("`nTekstfilen EAN.txt er blevet oprettet")
+                        
+                                        # Log oprettelsen af tekstfilen
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Tekstfilen EAN.txt er blevet oprettet"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                    }
+                                }
+                                catch {
+                                    $StatusLabel.SelectionColor = "Orange"
+                                    $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af tekstfilen EAN.txt")
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af tekstfil) EAN: $($_.Exception.Message)"
+                                    Add-Content -Path $logFile -Value $logEntry
+                                }
+                        
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen EAN.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe): $($_.Exception.Message)"
+                                Add-Content -Path $logFile -Value $logEntry
+                            }
+                                                    
+                            try {
+                                # Opret mappen "Email" inde i den nye mappe
+                                $mailNavnFolderPath = Join-Path $newFolderPath "Email"
+                                New-Item -Path $mailNavnFolderPath -ItemType Directory | Out-Null
+                                # Succesfuld oprettelse af mappen "Email"
+                                # $StatusLabel.SelectionColor = "Green"
+                                # $StatusLabel.AppendText("`nMappen 'Email' er oprettet i Dynamic Template mappen: $DynFolderName ")
+                        
+                                # Log oprettelsen af mappen "Email"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Email"
+                                Add-Content -Path $logFile -Value $logEntry
+                        
+                                try {
+                                    # Opret mappen "Kampagne" inde i "Email" mappen
+                                    $kampagneNavnFolderPath = Join-Path $mailNavnFolderPath "Kampagne"
+                                    New-Item -Path $kampagneNavnFolderPath -ItemType Directory | Out-Null
+                        
+                                    try {
+                                        # Opret mappen "OLD" inde i "Kampagne" mappen der ligger i "Email" mappen
+                                        $kampagneOldFolderPath = Join-Path $kampagneNavnFolderPath "OLD"
+                                        New-Item -Path $kampagneOldFolderPath -ItemType Directory | Out-Null
+                        
+                                        try {
+                                            # Opdater eller opret tekstfilen Kampagne.txt med UTF8-BOM kodning i undermappen "Kampagne"
+                                            $kampagneNavnSubFolderPath = Join-Path $kampagneNavnFolderPath "Kampagne.txt"
+                                            $currentkampagne = ""
+                        
+                                            if (!(Test-Path $kampagneNavnSubFolderPath)) {
+                                                $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                                [System.IO.File]::WriteAllText($kampagneNavnSubFolderPath, $currentkampagne, $utf8BomEncoder)
+                                                # $StatusLabel.SelectionColor = "Green"
+                                                # $StatusLabel.AppendText("`nTekstfilen Kampagne.txt er blevet oprettet i undermappen 'Kampagne' i mappen 'Email'")
+                        
+                                                # Log oprettelsen af tekstfilen
+                                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                $logEntry = "[$timestamp] Tekstfilen Kampagne.txt er blevet oprettet"
+                                                Add-Content -Path $logFile -Value $logEntry
+                                            }
+                                        }
+                                        catch {
+                                            $StatusLabel.SelectionColor = "Orange"
+                                            $StatusLabel.AppendText("`nDer opstod en fejl under opdateringen/oprettelsen af tekstfilen (Kampagne.txt).")
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                            $logEntry = "`n[$timestamp] Fejlmeddelelse (opdatering/oprettelse af tekstfil - Kampagne.txt): $($_.Exception.Message)"
+                                            Add-Content -Path $logFile -Value $logEntry
+                                        }
+                                    }
+                                    catch {
+                                        $StatusLabel.SelectionColor = "Orange"
+                                        $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'OLD'.")
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - OLD): $($_.Exception.Message)"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                    }
+                                }
+                                catch {
+                                    $StatusLabel.SelectionColor = "Orange"
+                                    $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Kampagne'.")
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - Kampagne): $($_.Exception.Message)"
+                                    Add-Content -Path $logFile -Value $logEntry
+                                }
+                        
+                                try {
+                                    # Opdater eller opret tekstfilen Email.txt med UTF8-BOM kodning
+                                    $mailNavnFilePath = Join-Path $mailNavnFolderPath "Email.txt"
+                                    $currentMail = ""
+                        
+                                    if (!(Test-Path $mailNavnFilePath)) {
+                                        $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                        [System.IO.File]::WriteAllText($mailNavnFilePath, $currentMail, $utf8BomEncoder)
+                                        # $StatusLabel.SelectionColor = "Green"
+                                        # $StatusLabel.AppendText("`nTekstfilen Email.txt er blevet oprettet")
+                        
+                                        # Log oprettelsen af tekstfilen
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Tekstfilen Email.txt er blevet oprettet"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                    }
+                                }
+                                catch {
+                                    $StatusLabel.SelectionColor = "Orange"
+                                    $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af tekstfilen (Email.txt).")
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af tekstfil - Email.txt): $($_.Exception.Message)"
+                                    Add-Content -Path $logFile -Value $logEntry
+                                }
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Email'.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - Email): $($_.Exception.Message)"
+                                Add-Content -Path $logFile -Value $logEntry
+                            }
+                        
+                            try {
+                                # Opret mappen "Forvaltningsnavn" inde i den nye mappe
+                                $forvNavnFolderPath = Join-Path $newFolderPath "Forvaltningsnavn"
+                                New-Item -Path $forvNavnFolderPath -ItemType Directory | Out-Null
+                        
+                                # Log oprettelsen af mappen "Forvaltningsnavn"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Forvaltningsnavn"
+                                Add-Content -Path $logFile -Value $logEntry
+                        
+                                # $StatusLabel.SelectionColor = "Green"
+                                # $StatusLabel.AppendText("`nMappen 'Forvaltningsnavn' er oprettet i Dynamic Template mappen: $DynFolderName")
+                        
+                                try {
+                                    # Opdater eller opret tekstfilen Forvaltningsnavn.txt med UTF8-BOM kodning
+                                    $forvNavnFilePath = Join-Path $forvNavnFolderPath "Forvaltningsnavn.txt"
+                                    $newForvNavn = $row.Forvaltningsnavn
+                                    $currentForvNavn = ""
+                        
+                                    if (Test-Path $forvNavnFilePath) {
+                                        $currentForvNavn = Get-Content -Path $forvNavnFilePath
+                                    }
+                        
+                                    if ($newForvNavn -ne $currentForvNavn) {
+                                        $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                        [System.IO.File]::WriteAllText($forvNavnFilePath, $newForvNavn, $utf8BomEncoder)
+                                        # $StatusLabel.SelectionColor = "Green"
+                                        # $StatusLabel.AppendText("`nTekstfilen Forvaltningsnavn.txt er blevet oprettet med værdien: ")
+                                        # $StatusLabel.SelectionColor = "Black"
+                                        # $StatusLabel.AppendText($newForvNavn)
+                                    }
+                                }
+                                catch {
+                                    $StatusLabel.SelectionColor = "Orange"
+                                    $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af tekstfilen (Forvaltningsnavn.txt).")
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af tekstfil - Forvaltningsnavn.txt): $($_.Exception.Message)"
+                                    Add-Content -Path $logFile -Value $logEntry
+                                }
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Forvaltningsnavn'.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - Forvaltningsnavn): $($_.Exception.Message)"
+                                Add-Content -Path $logFile -Value $logEntry
+                            }
+                                                    
+                            try {
+                                # Opret mappen "Kampagne" inde i den nye mappe
+                                $kampagneNavnFolderPath = Join-Path $newFolderPath "Kampagne"
+                                New-Item -Path $kampagneNavnFolderPath -ItemType Directory | Out-Null
+                        
+                                # Log oprettelsen af mappen "Kampagne"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Kampagne"
+                                Add-Content -Path $logFile -Value $logEntry
+                        
+                                # $StatusLabel.SelectionColor = "Green"
+                                # $StatusLabel.AppendText("`nMappen 'Kampagne' er oprettet i Dynamic Template mappen: $DynFolderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Kampagne'.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - Kampagne): $($_.Exception.Message)"
+                                Add-Content -Path $logFile -Value $logEntry
+                            }
+                        
+                            try {
+                                # Opret mappen "Logo" inde i den nye mappe
+                                $logoNavnFolderPath = Join-Path $newFolderPath "Logo"
+                                New-Item -Path $logoNavnFolderPath -ItemType Directory | Out-Null
+                        
+                                # Log oprettelsen af mappen "Logo"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Logo"
+                                Add-Content -Path $logFile -Value $logEntry
+                        
+                                # $StatusLabel.SelectionColor = "Green"
+                                # $StatusLabel.AppendText("`nMappen 'Logo' er oprettet i Dynamic Template mappen: $DynFolderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Logo'.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - Logo): $($_.Exception.Message)"
+                                Add-Content -Path $logFile -Value $logEntry
+                            }
+                        
+                            try {
+                                # Opret mappen "Webadresse" inde i den nye mappe
+                                $webadNavnFolderPath = Join-Path $newFolderPath "Webadresse"
+                                New-Item -Path $webadNavnFolderPath -ItemType Directory | Out-Null
+                        
+                                # Log oprettelsen af mappen "Webadresse"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Webadresse"
+                                Add-Content -Path $logFile -Value $logEntry
+                        
+                                # $StatusLabel.SelectionColor = "Green"
+                                # $StatusLabel.AppendText("`nMappen 'Webadresse' er oprettet i Dynamic Template mappen: $DynFolderName")
+                        
+                                try {
+                                    # Opdater eller opret tekstfilen Webadresse.txt med UTF8-BOM kodning
+                                    $webadNavnFilePath = Join-Path $webadNavnFolderPath "Webadresse.txt"
+                                    $currentWebad = ""
+                        
+                                    if (!(Test-Path $webadNavnFilePath)) {
+                                        $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                        [System.IO.File]::WriteAllText($webadNavnFilePath, $currentWebad, $utf8BomEncoder)
+                                        #$StatusLabel.SelectionColor = "Green"
+                                        #$StatusLabel.AppendText("`nTekstfilen Webadresse.txt er blevet oprettet")
+                        
+                                        # Log oprettelsen af tekstfilen
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Tekstfilen Webadresse.txt er blevet oprettet"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                    }
+                                }
+                                catch {
+                                    $StatusLabel.SelectionColor = "Orange"
+                                    $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af tekstfilen (Webadresse.txt).")
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "`n[$timestamp] Fejlmeddelelse oprettelse af tekstfil - Webadresse.txt): $($_.Exception.Message)"
+                                    Add-Content -Path $logFile -Value $logEntry
+                                }
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Webadresse'.")
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "`n[$timestamp] Fejlmeddelelse (oprettelse af mappe - Webadresse): $($_.Exception.Message)"
+                                Add-Content -Path $logFile -Value $logEntry
+                            }
+                        
+                            try {
+                                # Opret mappen "Weblink" inde i den nye mappe
+                                $WeblinkNavnFolderPath = Join-Path $newFolderPath "Weblink"
+                                New-Item -Path $WeblinkNavnFolderPath -ItemType Directory | Out-Null
+                        
+                                # Log oprettelsen af mappen "Weblink"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Weblink"
+                                Add-Content -Path $logFile -Value $logEntry
+                        
+                                # $StatusLabel.SelectionColor = "Green"
+                                # $StatusLabel.AppendText("`nMappen 'Weblink' er oprettet i Dynamic Template mappen: $DynFolderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Weblink'")
+                            }
+                        
+                            try {
+                                # Opret mappen "Weblink2" inde i den nye mappe
+                                $Weblink2NavnFolderPath = Join-Path $newFolderPath "Weblink2"
+                                New-Item -Path $Weblink2NavnFolderPath -ItemType Directory | Out-Null
+                        
+                                # Log oprettelsen af mappen "Weblink2"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Weblink2"
+                                Add-Content -Path $logFile -Value $logEntry
+                        
+                                # $StatusLabel.SelectionColor = "Green"
+                                # $StatusLabel.AppendText("`nMappen 'Weblink2' er oprettet i Dynamic Template mappen: $DynFolderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Weblink2'")
+                            }
+                        
+                            try {
+                                # Opret mappen "Webtxt" inde i den nye mappe
+                                $WebtxtNavnFolderPath = Join-Path $newFolderPath "Webtxt"
+                                New-Item -Path $WebtxtNavnFolderPath -ItemType Directory | Out-Null
+                        
+                                # Log oprettelsen af mappen "Webtxt"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Webtxt"
+                                Add-Content -Path $logFile -Value $logEntry
+                        
+                                # $StatusLabel.SelectionColor = "Green"
+                                # $StatusLabel.AppendText("`nMappen 'Webtxt' er oprettet i Dynamic Template mappen: $DynFolderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Webtxt'")
+                            }
+                        
+                            try {
+                                # Opret mappen "Webtxt2" inde i den nye mappe
+                                $Webtxt2NavnFolderPath = Join-Path $newFolderPath "Webtxt2"
+                                New-Item -Path $Webtxt2NavnFolderPath -ItemType Directory | Out-Null
+                        
+                                # Log oprettelsen af mappen "Webtxt2"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Webtxt2"
+                                Add-Content -Path $logFile -Value $logEntry
+                        
+                                # $StatusLabel.SelectionColor = "Green"
+                                # $StatusLabel.AppendText("`nMappen 'Webtxt2' er oprettet i Dynamic Template mappen: $DynFolderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Webtxt2'")
+                            }
+                        
+                            try {
+                                # Opret mappen "Åbningstider" inde i den nye mappe
+                                $timeNavnFolderPath = Join-Path $newFolderPath "Åbningstider"
+                                New-Item -Path $timeNavnFolderPath -ItemType Directory | Out-Null
+                        
+                                # Log oprettelsen af mappen "Åbningstider"
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $logEntry = "[$timestamp] Ny mappe er oprettet: Åbningstider"
+                                Add-Content -Path $logFile -Value $logEntry
+                        
+                                # $StatusLabel.SelectionColor = "Green"
+                                # $StatusLabel.AppendText("`nMappen 'Åbningstider' er oprettet i Dynamic Template mappen: $DynFolderName")
+                            }
+                            catch {
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.AppendText("`nDer opstod en fejl under oprettelsen af mappen 'Åbningstider'")
+                            }
+                        }
+                    }
+                    catch {
+                        $StatusLabel.SelectionColor = "Red"
+                        $StatusLabel.AppendText("`n`Fejl: $_")
+                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                        $logEntry = "[$timestamp] Fejl opstod under oprettelse af nye Dynamic Template foldere: $_"
+                        Add-Content -Path $logFile -Value $logEntry        
+                    }
+                }
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.AppendText("`n`nAfsluttet Dynamic Template oprettelse.")
+                $logEntry = "-----Slut på oprettelse af Dynamic Template mapper og filer-----"
+                Add-Content -Path $logFile -Value $logEntry        
+            })
+    
+        # Add click event to Change Dynamic Template button
+        $ChangeDynButton.Add_Click({
+                Clear-StatusLabel
+                $StatusLabel.SelectionFont = New-Object System.Drawing.Font($Font, [System.Drawing.FontStyle]::Bold)
+                $StatusLabel.SelectedText = "Status:`n"
+                $StatusLabel.SelectedText = "LOS ark indlæses`r`n"
+                $StatusLabel.SelectedText = "Arket $global:FolderName er indlæst og klar til yderlig håndtering`r`n"
+                $StatusLabel.SelectedText = "Dynamic Template data fra arket $global:FolderName bliver nu behandlet:`r`n"       
+                $StatusLabel.SelectionColor = "Green"
+                $StatusLabel.AppendText("`n`nOpdaterer eksisterende Dynamic Template mapper")
+                $logEntry = "`n`n-----Start på opdatering af Dynamic Template mapper og filer-----"
+                Add-Content -Path $logFile -Value $logEntry
+
+                try {
+                    if (!(Test-Path $SaveDynTempChangeSheet)) {
+                        $errorText = "CSV-filen '$SaveDynTempChangeSheet' eksisterer ikke eller er ugyldig."
+                        $StatusLabel.SelectionColor = "Orange"
+                        $StatusLabel.SelectedText = "`n$errorText"
+                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                        $logEntry = "[$timestamp]" + " " + $errorText
+                        Add-Content -Path $logFile -Value $logEntry
+            
+                    }
+                    else {
+                        $dynChangeData = Import-Csv $SaveDynTempChangeSheet
+            
+                        foreach ($row in $dynChangeData) {
+                            $oldName = $row.Organisationsnavn
+                            $updatedName = $row.'Nyt Organisationsnavn'
+                            $updatedForvName = $row.'Nyt Forvaltningsnavn'
+            
+                            try {
+                                $folder = Get-ChildItem -Path $dynTempDir -Directory | Where-Object { $_.Name -eq $oldName }
+
+                                if (!$folder) {
+                                    $errorText = "Dynamic Template mappen '$oldName' eksisterer ikke."
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "[$timestamp] $errorText"
+                                    Add-Content -Path $logFile -Value $logEntry
+
+                                    $StatusLabel.SelectionColor = "Orange"
+                                    $StatusLabel.SelectedText = "`n$errorText"
+                                }
+                                else {
+                                    try {
+                                        $updatedFolderPath = Join-Path $dynTempDir $updatedName
+                                        Rename-Item -Path $folder.FullName -NewName $updatedName -ErrorAction Stop
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Mappen $folder er opdateret til $updatedName"
+                                        Add-Content -Path $logFile -Value $logEntry    
+                                        $StatusLabel.SelectionColor = "Green"
+                                        $StatusLabel.SelectedText = "`n`nMappen $folder er opdateret til $updatedName"
+                                    }
+                                    catch {
+                                        $errorMessage = $_.Exception.Message
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Fejl under opdatering af Dynamic Template mappen:`n$errorMessage"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                        $StatusLabel.SelectionColor = "Red"
+                                        $StatusLabel.SelectedText = "`n$errorText"
+                                    }
+                                }
+            
+                                # Kontroller om mappen "Afdelingsnavn" eksisterer
+                                $afdNavnFolderPath = Join-Path $updatedFolderPath "Afdelingsnavn"
+                                try {
+                                    if (!(Test-Path $afdNavnFolderPath)) {
+                                        # Opret mappen "Afdelingsnavn" med værdierne
+                                        New-Item -Path $afdNavnFolderPath -ItemType Directory | Out-Null
+                                        $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                        [System.IO.File]::WriteAllText("$afdNavnFolderPath\Afdelingsnavn.txt", $updatedName, $utf8BomEncoder)
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Mappen 'Afdelingsnavn' er blevet oprettet med værdien '$updatedName'."
+                                        Add-Content -Path $logFile -Value $logEntry
+                                        # $StatusLabel.SelectionColor = "Green"
+                                        # $StatusLabel.SelectedText = "`nMappen 'Afdelingsnavn' er blevet oprettet."
+                                    }
+                                    else {
+                                        # Kontroller om tekstfilen "Afdelingsnavn.txt" eksisterer og indeholder den rigtige værdi
+                                        $afdNavnFilePath = Join-Path $afdNavnFolderPath "Afdelingsnavn.txt"
+                                        if (Test-Path $afdNavnFilePath) {
+                                            $currentAfdNavn = Get-Content -Path $afdNavnFilePath
+                                            if ($currentAfdNavn -ne $updatedName) {
+                                                $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                                [System.IO.File]::WriteAllText($afdNavnFilePath, $updatedName, $utf8BomEncoder)
+                                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                $logEntry = "[$timestamp] Tekstfilen '$afdNavnFilePath' er blevet opdateret med værdien '$updatedName' i UTF8-BOM kodning."
+                                                Add-Content -Path $logFile -Value $logEntry
+                                                # $StatusLabel.SelectionColor = "Green"
+                                                # $StatusLabel.SelectedText = "`nTekstfilen 'Afdelingsnavn.txt' er blevet opdateret med værdien: $updatedName"
+                                            }
+                                            else {
+                                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                $errorLogEntry = "[$timestamp] Tekstfilen 'Afdelingsnavn.txt' er allerede opdateret med den rigtige værdi"
+                                                Add-Content -Path $logFile -Value $errorLogEntry
+                                            }
+                                        }
+                                        else {
+                                            # Opret en tekstfil "Afdelingsnavn.txt" med værdien i UTF8-BOM format
+                                            $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                            [System.IO.File]::WriteAllText($afdNavnFilePath, $updatedName, $utf8BomEncoder)
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                            $logEntry = "[$timestamp] Tekstfilen '$afdNavnFilePath' er blevet oprettet med værdien '$updatedName' i UTF8-BOM kodning."
+                                            Add-Content -Path $logFile -Value $logEntry
+                                            # $StatusLabel.SelectionColor = "Green"
+                                            # $StatusLabel.SelectedText = "`nTekstfilen 'Afdelingsnavn.txt' er blevet oprettet med værdien: $updatedName"
+                                        }
+                                    }
+                                }
+                                catch {
+                                    # Håndter eventuelle fejl, der opstår i try-blokken
+                                    $errorMessage = $_.Exception.Message
+                                    $StatusLabel.SelectionColor = "Red"
+                                    $StatusLabel.SelectedText = "`nFejl under oprettelse/opdatering af 'Afdelingsnavn' mappen og filen: $errorMessage"
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $errorLogEntry = "[$timestamp] Fejl opstod under oprettelse/opdatering af 'Afdelingsnavn' mappen og filen: $errorMessage"
+                                    Add-Content -Path $logFile -Value $errorLogEntry
+                                }
+            
+                                # Kontroller om mappen "Bundgrafik" eksisterer
+                                $bundgfxFolderPath = Join-Path $updatedFolderPath "Bundgrafik"
+                                if (!(Test-Path $bundgfxFolderPath)) {
+                                    # Opret mappen "Bundgrafik"
+                                    try {
+                                        New-Item -Path $bundgfxFolderPath -ItemType Directory -ErrorAction Stop | Out-Null
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Ny mappe er oprettet: Bundgrafik"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                        # $StatusLabel.SelectionColor = "Green"
+                                        # $StatusLabel.SelectedText = "`nNy mappe er oprettet: Bundgrafik"
+                                    }
+                                    catch {
+                                        # Håndter eventuelle fejl, der opstår under oprettelse af mappen
+                                        $errorMessage = $_.Exception.Message
+                                        $StatusLabel.SelectionColor = "Red"
+                                        $StatusLabel.SelectedText = "`nFejl under oprettelse af mappen Bundgrafik: $errorMessage"
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $errorLogEntry = "[$timestamp] Fejl opstod under oprettelse af mappen 'Bundgrafik': $errorMessage"
+                                        Add-Content -Path $logFile -Value $errorLogEntry
+                                    }
+                                }
+                                else {
+                                    # Log eksisterende mappe uden at kaste en fejl
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "[$timestamp] Mappen 'Bundgrafik' eksisterer allerede og bliver ikke opdateret"
+                                    Add-Content -Path $logFile -Value $logEntry
+                                }
+            
+                                # Kontroller om mappen "EAN" eksisterer
+                                $eanFolderPath = Join-Path $updatedFolderPath "EAN"
+                                try {
+                                    if (Test-Path $eanFolderPath) {
+                                        # Kontroller om tekstfilen "EAN.txt" eksisterer og er korrekt formatteret
+                                        $eanFilePath = Join-Path $eanFolderPath "EAN.txt"
+                                        if (Test-Path $eanFilePath) {
+                                            $eanContent = Get-Content -Path $eanFilePath -Encoding UTF8
+                                            if ($eanContent -notmatch "^\xEF\xBB\xBF") {
+                                                $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                                [System.IO.File]::WriteAllText($eanFilePath, $eanContent, $utf8BomEncoder)
+                                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                $logEntry = "[$timestamp] Tekstfilen '$eanFilePath' er blevet formatteret som UTF8-BOM uden at ændre indholdet."
+                                                Add-Content -Path $logFile -Value $logEntry
+                                                # $StatusLabel.SelectionColor = "Green"
+                                                # $StatusLabel.SelectedText = "`nTekstfilen 'EAN.txt' er blevet formatteret korrekt."
+                                            }
+                                            else {
+                                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                $errorLogEntry = "[$timestamp] Tekstfilen 'EAN.txt' er allerede formatteret korrekt"
+                                                Add-Content -Path $logFile -Value $errorLogEntry
+                                            }
+                                        }
+                                        else {
+                                            # Opret en tom tekstfil "EAN.txt" i UTF8-BOM format
+                                            $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                            [System.IO.File]::WriteAllText($eanFilePath, "", $utf8BomEncoder)
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                            $logEntry = "[$timestamp] Tekstfilen '$eanFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM format."
+                                            Add-Content -Path $logFile -Value $logEntry
+                                            # $StatusLabel.SelectionColor = "Green"
+                                            # $StatusLabel.SelectedText = "`nTekstfilen 'EAN.txt' er blevet oprettet som et tomt dokument i korrekt format."
+                                        }
+                                    }
+                                    else {
+                                        # Opret mappen "EAN" og en tom tekstfil "EAN.txt" i UTF8-BOM format
+                                        New-Item -Path $eanFolderPath -ItemType Directory | Out-Null
+                                        $eanFilePath = Join-Path $eanFolderPath "EAN.txt"
+                                        $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                        [System.IO.File]::WriteAllText($eanFilePath, "", $utf8BomEncoder)
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Mappen 'EAN' er blevet oprettet, og tekstfilen '$eanFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM format."
+                                        Add-Content -Path $logFile -Value $logEntry
+                                        # $StatusLabel.SelectionColor = "Green"
+                                        # $StatusLabel.SelectedText = "`nMappen 'EAN' er blevet oprettet, og tekstfilen 'EAN.txt' er blevet oprettet som et tomt dokument i korrekt format."
+                                    }
+                                }
+                                catch {
+                                    # Håndter eventuelle fejl, der opstår i try-blokken
+                                    $errorMessage = $_.Exception.Message
+                                    $StatusLabel.SelectionColor = "Red"
+                                    $StatusLabel.SelectedText = "`nFejl opstod under oprettelse/opdatering af 'EAN' mappen og filen: $errorMessage"
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $errorLogEntry = "[$timestamp] Fejl opstod under oprettelse/opdatering af 'EAN' mappen og filen: $errorMessage"
+                                    Add-Content -Path $logFile -Value $errorLogEntry
+                                }
+
+                                # Kontroller om mappen "Email" eksisterer
+                                $emailFolderPath = Join-Path $updatedFolderPath "Email"
+                                try {
+                                    if (Test-Path $emailFolderPath) {
+                                        # Kontroller om mappen "Kampagne" eksisterer inden for mappen "Email"
+                                        $kampagneFolderPath = Join-Path $emailFolderPath "Kampagne"
+                                        try {
+                                            if (Test-Path $kampagneFolderPath) {
+                                                # Kontroller om tekstfilen "Kampagne.txt" eksisterer
+                                                $kampagneFilePath = Join-Path $kampagneFolderPath "Kampagne.txt"
+                                                try {
+                                                    if (Test-Path $kampagneFilePath) {
+                                                        $currentKampagneBytes = [System.IO.File]::ReadAllBytes($kampagneFilePath)
+                                                        $isUtf8BomFormatted = ($currentKampagneBytes[0] -eq 0xEF) -and ($currentKampagneBytes[1] -eq 0xBB) -and ($currentKampagneBytes[2] -eq 0xBF)
+    
+                                                        # Kontroller om tekstfilen er korrekt formatteret som UTF8-BOM
+                                                        $kampagneContent = Get-Content -Path $kampagneFilePath -Raw
+                                                        $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+
+                                                        if (!$isUtf8BomFormatted) {
+                                                            # Overskriv den eksisterende fil med en ny fil i UTF8-BOM format
+                                                            [System.IO.File]::WriteAllText($kampagneFilePath, $kampagneContent, $utf8BomEncoder)
+                                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                            $logEntry = "[$timestamp] Tekstfilen '$kampagneFilePath' er ikke korrekt formatteret som UTF8-BOM. Filen er blevet overskrevet med en ny fil i UTF8-BOM format."
+                                                            Add-Content -Path $logFile -Value $logEntry
+                                                            # $StatusLabel.SelectionColor = "Green"
+                                                            # $StatusLabel.SelectedText = "`n$logEntry"
+                                                        }
+                                                        else {
+                                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                            $errorLogEntry = "[$timestamp] Tekstfilen '$kampagneFilePath' er allerede formatteret korrekt"
+                                                            Add-Content -Path $logFile -Value $errorLogEntry            
+                                                        }
+                                                    }
+                                                    else {
+                                                        # Opret en tom tekstfil "Kampagne.txt" i UTF8-BOM format
+                                                        [System.IO.File]::WriteAllText($kampagneFilePath, "", $utf8BomEncoder)
+                                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                        $logEntry = "[$timestamp] Tekstfilen '$kampagneFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM kodning."
+                                                        Add-Content -Path $logFile -Value $logEntry
+                                                        # $StatusLabel.SelectionColor = "Green"
+                                                        # $StatusLabel.SelectedText = "`n$logEntry"
+                                                    }
+                                                }
+                                                catch {
+                                                    # Håndter eventuelle fejl vedrørende opdatering/oprettelse af tekstfilen
+                                                    $errorMessage = $_.Exception.Message
+                                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                    $errorLogEntry = "Fejl under opdatering/oprettelse af tekstfilen '$kampagneFilePath':`n$errorMessage"
+                                                    Add-Content -Path $logFile -Value "[$timestamp] $errorLogEntry"
+                                                    $StatusLabel.SelectionColor = "Red"
+                                                    $StatusLabel.SelectedText = "`n$errorLogEntry"
+                                                }
+
+                                                # Kontroller om mappen "OLD" eksisterer inden for mappen "Kampagne"
+                                                $oldFolderPath = Join-Path $kampagneFolderPath "OLD"
+                                                try {
+                                                    if (!(Test-Path $oldFolderPath)) {
+                                                        # Opret mappen "OLD" inden for mappen "Kampagne"
+                                                        New-Item -Path $oldFolderPath -ItemType Directory | Out-Null
+                                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                        $logEntry = "[$timestamp] Mappen 'OLD' er blevet oprettet inden for mappen 'Kampagne'."
+                                                        Add-Content -Path $logFile -Value $logEntry
+                                                        # $StatusLabel.SelectionColor = "Green"
+                                                        # $StatusLabel.SelectedText = "`n$logEntry"
+                                                    }
+                                                }
+                                                catch {
+                                                    # Håndter eventuelle fejl vedrørende oprettelse af mappen
+                                                    $errorMessage = $_.Exception.Message
+                                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                    $errorLogEntry = "Fejl under oprettelse af mappen 'OLD':`n$errorMessage"
+                                                    Add-Content -Path $logFile -Value "[$timestamp] $errorLogEntry"
+                                                    $StatusLabel.SelectionColor = "Red"
+                                                    $StatusLabel.SelectedText = "`n$errorLogEntry"
+                                                }
+                                            }
+                                            else {
+                                                # Opret mappen "Kampagne" inklusive mappen "OLD" og en tom tekstfil "Kampagne.txt" i UTF8-BOM format
+                                                New-Item -Path $kampagneFolderPath -ItemType Directory | Out-Null
+                                                $kampagneFilePath = Join-Path $kampagneFolderPath "Kampagne.txt"
+                                                try {
+                                                    [System.IO.File]::WriteAllText($kampagneFilePath, "", $utf8BomEncoder)
+                                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                    $logEntry = "[$timestamp] Mappen 'Kampagne' er blevet oprettet, mappen 'OLD' er blevet oprettet inden for den, og tekstfilen '$kampagneFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM kodning."
+                                                    Add-Content -Path $logFile -Value $logEntry
+                                                    # $StatusLabel.SelectionColor = "Green"
+                                                    # $StatusLabel.SelectedText = "`n$logEntry"
+
+                                                    # Opret mappen "OLD" inden for mappen "Kampagne"
+                                                    $oldFolderPath = Join-Path $kampagneFolderPath "OLD"
+                                                    New-Item -Path $oldFolderPath -ItemType Directory | Out-Null
+                                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                    $logEntry = "[$timestamp] Mappen 'OLD' er blevet oprettet inden for mappen 'Kampagne'."
+                                                    Add-Content -Path $logFile -Value $logEntry
+                                                    # $StatusLabel.SelectionColor = "Green"
+                                                    # $StatusLabel.SelectedText = "`n$logEntry"
+                                                }
+                                                catch {
+                                                    # Håndter eventuelle fejl vedrørende oprettelse/opdatering af tekstfilen
+                                                    $errorMessage = $_.Exception.Message
+                                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                    $errorLogEntry = "Fejl under oprettelse/opdatering af tekstfilen '$kampagneFilePath':`n$errorMessage"
+                                                    Add-Content -Path $logFile -Value "[$timestamp] $errorLogEntry"
+                                                    $StatusLabel.SelectionColor = "Red"
+                                                    $StatusLabel.SelectedText = "`n$errorLogEntry"
+                                                }
+                                            }
+                                        }
+                                        catch {
+                                            # Håndter eventuelle fejl vedrørende oprettelse/opdatering af mappen
+                                            $errorMessage = $_.Exception.Message
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                            $errorLogEntry = "Fejl under oprettelse/opdatering af 'Kampagne' mappen og filen:`n$errorMessage"
+                                            Add-Content -Path $logFile -Value "[$timestamp] $errorLogEntry"
+                                            $StatusLabel.SelectionColor = "Red"
+                                            $StatusLabel.SelectedText = "`n$errorLogEntry"
+                                        }
+
+                                        # Kontroller om tekstfilen "Email.txt" eksisterer
+                                        $emailFilePath = Join-Path $emailFolderPath "Email.txt"
+                                        try {
+                                            if (Test-Path $emailFilePath) {
+                                                $currentEmailBytes = [System.IO.File]::ReadAllBytes($emailFilePath)
+                                                $isUtf8BomFormatted = ($currentEmailBytes[0] -eq 0xEF) -and ($currentEmailBytes[1] -eq 0xBB) -and ($currentEmailBytes[2] -eq 0xBF)
+                                        
+                                                if (!$isUtf8BomFormatted) {
+                                                    # Overskriv den eksisterende fil med en ny fil i UTF8-BOM format
+                                                    $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                                    [System.IO.File]::WriteAllText($emailFilePath, $utf8BomEncoder)
+                                        
+                                                    $logEntry = "Tekstfilen '$emailFilePath' er ikke korrekt formatteret som UTF8-BOM. Filen er blevet overskrevet med en ny fil i UTF8-BOM format."
+                                                    Add-Content -Path $logFile -Value "[$(Get-Date -Format "dd-MM-yyyy HH:mm:ss")] $logEntry"
+                                                    # $StatusLabel.SelectionColor = "Green"
+                                                    # $StatusLabel.SelectedText = "`n$logEntry"
+                                                }
+                                                else {
+                                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                    $errorLogEntry = "[$timestamp] Tekstfilen '$emailFilePath' er allerede formatteret korrekt"
+                                                    Add-Content -Path $logFile -Value $errorLogEntry            
+                                                }
+                                            }
+                                            else {
+                                                # Opret en tom tekstfil "Email.txt" i UTF8-BOM format
+                                                $byteOrderMarkUtf8 = [byte[]](0xEF, 0xBB, 0xBF)
+                                                [System.IO.File]::WriteAllBytes($emailFilePath, $byteOrderMarkUtf8)
+                                        
+                                                $logEntry = "Tekstfilen '$emailFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM kodning."
+                                                Add-Content -Path $logFile -Value "[$(Get-Date -Format "dd-MM-yyyy HH:mm:ss")] $logEntry"
+                                                # $StatusLabel.SelectionColor = "Green"
+                                                # $StatusLabel.SelectedText = "`n$logEntry"
+                                            }
+                                        }
+                                        catch {
+                                            # Håndter eventuelle fejl vedrørende opdatering/oprettelse af tekstfilen
+                                            $errorMessage = $_.Exception.Message
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                            $errorLogEntry = "Fejl under opdatering/oprettelse af tekstfilen '$emailFilePath':`n$errorMessage"
+                                            Add-Content -Path $logFile -Value "[$timestamp] $errorLogEntry"
+                                            $StatusLabel.SelectionColor = "Red"
+                                            $StatusLabel.SelectedText = "`n$errorLogEntry"
+                                        }
+                                    }
+                                    else {
+                                        # Opret mappen "Email" inklusive mappen "Kampagne", mappen "OLD" og en tom tekstfil "Kampagne.txt" i UTF8-BOM format
+                                        New-Item -Path $emailFolderPath -ItemType Directory | Out-Null
+                                        $kampagneFolderPath = Join-Path $emailFolderPath "Kampagne"
+                                        try {
+                                            New-Item -Path $kampagneFolderPath -ItemType Directory | Out-Null
+                                            $kampagneFilePath = Join-Path $kampagneFolderPath "Kampagne.txt"
+                                            [System.IO.File]::WriteAllText($kampagneFilePath, "", $utf8BomEncoder)
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                            $logEntry = "Mappen 'Email' er blevet oprettet, mappen 'Kampagne' er blevet oprettet inden for den, og tekstfilen '$kampagneFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM kodning."
+                                            Add-Content -Path $logFile -Value "$timestamp $logEntry"
+                                            # $StatusLabel.SelectionColor = "Green"
+                                            # $StatusLabel.SelectedText = "`n$logEntry"
+
+                                            # Opret mappen "OLD" inden for mappen "Kampagne"
+                                            $oldFolderPath = Join-Path $kampagneFolderPath "OLD"
+                                            New-Item -Path $oldFolderPath -ItemType Directory | Out-Null
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                            $logEntry = "Mappen 'OLD' er blevet oprettet inden for mappen 'Kampagne'."
+                                            Add-Content -Path $logFile -Value "$timestamp $logEntry"
+                                            # $StatusLabel.SelectionColor = "Green"
+                                            # $StatusLabel.SelectedText = "`n$logEntry"
+                                        }
+                                        catch {
+                                            # Håndter eventuelle fejl vedrørende oprettelse/opdatering af tekstfilen
+                                            $errorMessage = $_.Exception.Message
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                            $errorLogEntry = "Fejl under oprettelse/opdatering af tekstfilen '$kampagneFilePath':`n$errorMessage"
+                                            Add-Content -Path $logFile -Value "[$timestamp] $errorLogEntry"
+                                            $StatusLabel.SelectionColor = "Red"
+                                            $StatusLabel.SelectedText = "`n$errorLogEntry"
+                                        }
+                                    }
+                                }
+                                catch {
+                                    # Håndter eventuelle fejl vedrørende oprettelse/opdatering af mappen
+                                    $errorMessage = $_.Exception.Message
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $errorLogEntry = "Fejl under oprettelse/opdatering af 'Email' mappen og filen:`n$errorMessage"
+                                    Add-Content -Path $logFile -Value "[$timestamp] $errorLogEntry"
+                                    $StatusLabel.SelectionColor = "Red"
+                                    $StatusLabel.SelectedText = "`n$errorLogEntry"
+                                }
+
+                                # Kontroller om mappen "Forvaltningsnavn" eksisterer
+                                $forvaltningFolderPath = Join-Path $updatedFolderPath "Forvaltningsnavn"
+                                try {
+                                    if (!(Test-Path $forvaltningFolderPath)) {
+                                        # Opret mappen "Forvaltningsnavn" med værdien
+                                        New-Item -Path $forvaltningFolderPath -ItemType Directory | Out-Null
+                                        $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                        [System.IO.File]::WriteAllText("$forvaltningFolderPath\Forvaltningsnavn.txt", $updatedForvName, $utf8BomEncoder)
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "Mappen 'Forvaltningsnavn' er blevet oprettet med værdien '$updatedForvName'."
+                                        Add-Content -Path $logFile -Value "[$timestamp] $logEntry"
+                                        # $StatusLabel.SelectionColor = "Green"
+                                        # $StatusLabel.SelectedText = "`n$logEntry"
+                                    }
+                                    else {
+                                        # Kontroller om tekstfilen "Forvaltningsnavn.txt" eksisterer og indeholder den rigtige værdi
+                                        $forvaltningFilePath = Join-Path $forvaltningFolderPath "Forvaltningsnavn.txt"
+                                        try {
+                                            if (Test-Path $forvaltningFilePath) {
+                                                $currentForvaltningBytes = [System.IO.File]::ReadAllBytes($forvaltningFilePath)
+                                                $isUtf8BomFormatted = ($currentForvaltningBytes[0] -eq 0xEF) -and ($currentForvaltningBytes[1] -eq 0xBB) -and ($currentForvaltningBytes[2] -eq 0xBF)
+                                        
+                                                if (!$isUtf8BomFormatted) {
+                                                    $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                                    [System.IO.File]::WriteAllText($forvaltningFilePath, $updatedForvName, $utf8BomEncoder)
+                                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                    $logEntry = "Tekstfilen '$forvaltningFilePath' er blevet opdateret med værdien '$updatedForvName' i UTF8-BOM kodning."
+                                                    Add-Content -Path $logFile -Value "[$timestamp] $logEntry"
+                                                    # $StatusLabel.SelectionColor = "Green"
+                                                    # $StatusLabel.SelectedText = "`n$logEntry"
+                                                }
+                                                elseif ((Get-Content -Path $forvaltningFilePath) -ne $updatedForvName) {
+                                                    [System.IO.File]::WriteAllText($forvaltningFilePath, $updatedForvName)
+                                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                    $logEntry = "Tekstfilen '$forvaltningFilePath' er blevet opdateret med værdien '$updatedForvName'."
+                                                    Add-Content -Path $logFile -Value "[$timestamp] $logEntry"
+                                                    # $StatusLabel.SelectionColor = "Green"
+                                                    # $StatusLabel.SelectedText = "`n$logEntry"
+                                                }
+                                            }
+                                            else {
+                                                $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                                [System.IO.File]::WriteAllText($forvaltningFilePath, $updatedForvName, $utf8BomEncoder)
+                                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                                $logEntry = "Tekstfilen '$forvaltningFilePath' er blevet oprettet med værdien '$updatedForvName' i UTF8-BOM kodning."
+                                                Add-Content -Path $logFile -Value "[$timestamp] $logEntry"
+                                                # $StatusLabel.SelectionColor = "Green"
+                                                # $StatusLabel.SelectedText = "`n$logEntry"
+                                            }
+                                        }
+                                        catch {
+                                            # Håndter eventuelle fejl vedrørende opdatering af tekstfilen
+                                            $errorMessage = $_.Exception.Message
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                            $errorLogEntry = "Fejl under opdatering af tekstfilen '$forvaltningFilePath':`n$errorMessage"
+                                            Add-Content -Path $logFile -Value "[$timestamp] $errorLogEntry"
+                                            $StatusLabel.SelectionColor = "Red"
+                                            $StatusLabel.SelectedText = "`n$errorLogEntry"
+                                        }
+                                    }
+                                }
+                                catch {
+                                    # Håndter eventuelle fejl vedrørende oprettelse/opdatering af mappen
+                                    $errorMessage = $_.Exception.Message
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $errorLogEntry = "Fejl under oprettelse/opdatering af 'Forvaltningsnavn' mappen og filen:`n$errorMessage"
+                                    Add-Content -Path $logFile -Value "[$timestamp] $errorLogEntry"
+                                    $StatusLabel.SelectionColor = "Red"
+                                    $StatusLabel.SelectedText = "`n$errorLogEntry"
+                                }
+
+                                # Kontroller om mappen "Kampagne" eksisterer
+                                $kampFolderPath = Join-Path $updatedFolderPath "Kampagne"
+                                if (!(Test-Path $kampFolderPath)) {
+                                    # Opret mappen "Kampagne"
+                                    try {
+                                        New-Item -Path $kampFolderPath -ItemType Directory -ErrorAction Stop | Out-Null
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "Ny mappe er oprettet: Kampagne"
+                                        Add-Content -Path $logFile -Value "[$timestamp] $logEntry"
+                                        # $StatusLabel.SelectionColor = "Green"
+                                        # $StatusLabel.SelectedText = "`nNy mappe er oprettet: Kampagne"
+                                    }
+                                    catch {
+                                        # Håndter eventuelle fejl, der opstår under oprettelse af mappen
+                                        $errorMessage = $_.Exception.Message
+                                        $StatusLabel.SelectionColor = "Red"
+                                        $StatusLabel.SelectedText = "`nFejl under oprettelse af mappen Kampagne: $errorMessage"
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $errorLogEntry = "Fejl opstod under oprettelse af mappen 'Kampagne': $errorMessage"
+                                        Add-Content -Path $logFile -Value "[$timestamp] $errorLogEntry"
+                                    }
+                                }
+                                else {
+                                    # Log eksisterende mappe uden at kaste en fejl
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $logEntry = "Mappen 'Kampagne' eksisterer allerede og bliver ikke opdateret"
+                                    Add-Content -Path $logFile -Value "[$timestamp] $logEntry"
+                                }
+
+                                # Kontroller om mappen "Logo" eksisterer
+                                $LogoUpdateFolderPath = Join-Path $updatedFolderPath "Logo"
+                                try {
+                                    if (!(Test-Path $LogoUpdateFolderPath)) {
+                                        # Opret mappen "Logo"
+                                        New-Item -Path $LogoUpdateFolderPath -ItemType Directory | Out-Null
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Ny mappe er oprettet: Logo"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                        # $StatusLabel.SelectionColor = "Green"
+                                        # $StatusLabel.SelectedText = "`nNy mappe er oprettet: Logo"
+                                    }
+                                    else {
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Mappen 'Logo' eksisterer allerede og bliver ikke opdateret"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                    }
+                                }
+                                catch {
+                                    # Håndter eventuelle fejl, der opstår i try-blokken
+                                    $errorMessage = $_.Exception.Message
+                                    $StatusLabel.SelectionColor = "Red"
+                                    $StatusLabel.SelectedText = "`nFejl under oprettelse af mappen Logo: $errorMessage"
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $errorLogEntry = "[$timestamp] Fejl opstod under oprettelse af mappen 'Logo': $errorMessage"
+                                    Add-Content -Path $logFile -Value $errorLogEntry
+                                }
+
+                                # Kontroller om mappen "Webadresse" eksisterer
+                                $WebadresseUpdateFolderPath = Join-Path $updatedFolderPath "Webadresse"
+                                try {
+                                    if (Test-Path $WebadresseUpdateFolderPath) {
+                                        # Kontroller om tekstfilen "Webadresse.txt" eksisterer og er korrekt formatteret
+                                        $webaddresseUpdateFilePath = Join-Path $WebadresseUpdateFolderPath "Webadresse.txt"
+                                        try {
+                                            if (Test-Path $webaddresseUpdateFilePath) {
+                                                $webadresseUpdateContent = Get-Content -Path $webaddresseUpdateFilePath -Encoding UTF8
+                                                if ($webadresseUpdateContent -notmatch "^\xEF\xBB\xBF") {
+                                                    $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                                    [System.IO.File]::WriteAllText($webaddresseUpdateFilePath, $webadresseUpdateContent, $utf8BomEncoder)
+                                                    $logEntry = "Tekstfilen '$webaddresseUpdateFilePath' er blevet formatteret som UTF8-BOM uden at ændre indholdet."
+                                                    Add-Content -Path $logFile -Value "[$(Get-Date -Format 'dd-MM-yyyy HH:mm:ss')] $logEntry"
+                                                    # $StatusLabel.SelectionColor = "Green"
+                                                    # $StatusLabel.SelectedText = "`n$logEntry"
+                                                }
+                                            }
+                                            else {
+                                                # Opret en tom tekstfil "Webadresse.txt" i UTF8-BOM format
+                                                $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                                [System.IO.File]::WriteAllText($webaddresseUpdateFilePath, "", $utf8BomEncoder)
+                                                $logEntry = "Tekstfilen '$webaddresseUpdateFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM format."
+                                                Add-Content -Path $logFile -Value "[$(Get-Date -Format 'dd-MM-yyyy HH:mm:ss')] $logEntry"
+                                                # $StatusLabel.SelectionColor = "Green"
+                                                # $StatusLabel.SelectedText = "`n$logEntry"
+                                            }
+                                        }
+                                        catch {
+                                            # Håndter eventuelle fejl vedrørende opdatering af tekstfilen
+                                            $errorMessage = $_.Exception.Message
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                            $errorLogEntry = "Fejl under opdatering af tekstfilen '$webaddresseUpdateFilePath':`n$errorMessage"
+                                            Add-Content -Path $logFile -Value "[$timestamp] $errorLogEntry"
+                                            $StatusLabel.SelectionColor = "Red"
+                                            $StatusLabel.SelectedText = "`n$errorLogEntry"
+                                        }
+                                    }
+                                    else {
+                                        # Opret mappen "Webadresse" og en tom tekstfil "Webadresse.txt" i UTF8-BOM format
+                                        New-Item -Path $WebadresseUpdateFolderPath -ItemType Directory | Out-Null
+                                        $webaddresseUpdateFilePath = Join-Path $WebadresseUpdateFolderPath "Webadresse.txt"
+                                        try {
+                                            $utf8BomEncoder = New-Object System.Text.UTF8Encoding($true)
+                                            [System.IO.File]::WriteAllText($webaddresseUpdateFilePath, "", $utf8BomEncoder)
+                                            $logEntry = "Mappen 'Webadresse' er blevet oprettet, og tekstfilen '$webaddresseUpdateFilePath' er blevet oprettet som et tomt dokument i UTF8-BOM format."
+                                            Add-Content -Path $logFile -Value "[$(Get-Date -Format 'dd-MM-yyyy HH:mm:ss')] $logEntry"
+                                            # $StatusLabel.SelectionColor = "Green"
+                                            # $StatusLabel.SelectedText = "`n$logEntry"
+                                        }
+                                        catch {
+                                            # Håndter eventuelle fejl vedrørende oprettelse af tekstfilen
+                                            $errorMessage = $_.Exception.Message
+                                            $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                            $errorLogEntry = "Fejl under oprettelse af tekstfilen '$webaddresseUpdateFilePath':`n$errorMessage"
+                                            Add-Content -Path $logFile -Value "[$timestamp] $errorLogEntry"
+                                            $StatusLabel.SelectionColor = "Red"
+                                            $StatusLabel.SelectedText = "`n$errorLogEntry"
+                                        }
+                                    }
+                                }
+                                catch {
+                                    # Håndter eventuelle fejl vedrørende oprettelse/opdatering af mappen
+                                    $errorMessage = $_.Exception.Message
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $errorLogEntry = "Fejl under oprettelse/opdatering af 'Webadresse' mappen og filen:`n$errorMessage"
+                                    Add-Content -Path $logFile -Value "[$timestamp] $errorLogEntry"
+                                    $StatusLabel.SelectionColor = "Red"
+                                    $StatusLabel.SelectedText = "`n$errorLogEntry"
+                                }
+
+                                # Kontroller om mappen "Weblink" eksisterer
+                                $WeblinkUpdateFolderPath = Join-Path $updatedFolderPath "Weblink"
+                                try {
+                                    if (!(Test-Path $WeblinkUpdateFolderPath)) {
+                                        # Opret mappen "Weblink"
+                                        New-Item -Path $WeblinkUpdateFolderPath -ItemType Directory | Out-Null
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Ny mappe er oprettet: Weblink"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                        # $StatusLabel.SelectionColor = "Green"
+                                        # $StatusLabel.SelectedText = "`nNy mappe er oprettet: Weblink"
+                                    }
+                                    else {
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Mappen 'Weblink' eksisterer allerede og bliver ikke opdateret"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                    }
+                                }
+                                catch {
+                                    # Håndter eventuelle fejl, der opstår i try-blokken
+                                    $errorMessage = $_.Exception.Message
+                                    $StatusLabel.SelectionColor = "Red"
+                                    $StatusLabel.SelectedText = "`nFejl under oprettelse af mappen Weblink: $errorMessage"
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $errorLogEntry = "[$timestamp] Fejl opstod under oprettelse af mappen 'Weblink': $errorMessage"
+                                    Add-Content -Path $logFile -Value $errorLogEntry
+                                }
+
+                                # Kontroller om mappen "Weblink2" eksisterer
+                                $Weblink2UpdateFolderPath = Join-Path $updatedFolderPath "Weblink2"
+                                try {
+                                    if (!(Test-Path $Weblink2UpdateFolderPath)) {
+                                        # Opret mappen "Weblink2"
+                                        New-Item -Path $Weblink2UpdateFolderPath -ItemType Directory | Out-Null
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Ny mappe er oprettet: Weblink2"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                        # $StatusLabel.SelectionColor = "Green"
+                                        # $StatusLabel.SelectedText = "`nNy mappe er oprettet: Weblink2"
+                                    }
+                                    else {
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Mappen 'Weblink2' eksisterer allerede og bliver ikke opdateret"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                    }
+                                }
+                                catch {
+                                    # Håndter eventuelle fejl, der opstår i try-blokken
+                                    $errorMessage = $_.Exception.Message
+                                    $StatusLabel.SelectionColor = "Red"
+                                    $StatusLabel.SelectedText = "`nFejl under oprettelse af mappen Weblink2: $errorMessage"
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $errorLogEntry = "[$timestamp] Fejl opstod under oprettelse af mappen 'Weblink2': $errorMessage"
+                                    Add-Content -Path $logFile -Value $errorLogEntry
+                                }
+
+                                # Kontroller om mappen "Webtxt" eksisterer
+                                $WebtxtUpdateFolderPath = Join-Path $updatedFolderPath "Webtxt"
+                                try {
+                                    if (!(Test-Path $WebtxtUpdateFolderPath)) {
+                                        # Opret mappen "Webtxt"
+                                        New-Item -Path $WebtxtUpdateFolderPath -ItemType Directory | Out-Null
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Ny mappe er oprettet: Webtxt"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                        # $StatusLabel.SelectionColor = "Green"
+                                        # $StatusLabel.SelectedText = "`nNy mappe er oprettet: Webtxt"
+                                    }
+                                    else {
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Mappen 'Webtxt' eksisterer allerede og bliver ikke opdateret"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                    }
+                                }
+                                catch {
+                                    # Håndter eventuelle fejl, der opstår i try-blokken
+                                    $errorMessage = $_.Exception.Message
+                                    $StatusLabel.SelectionColor = "Red"
+                                    $StatusLabel.SelectedText = "`nFejl under oprettelse af mappen Webtxt: $errorMessage"
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $errorLogEntry = "[$timestamp] Fejl opstod under oprettelse af mappen 'Webtxt': $errorMessage"
+                                    Add-Content -Path $logFile -Value $errorLogEntry
+                                }
+
+                                # Kontroller om mappen "Webtxt2" eksisterer
+                                $Webtxt2UpdateFolderPath = Join-Path $updatedFolderPath "Webtxt2"
+                                try {
+                                    if (!(Test-Path $Webtxt2UpdateFolderPath)) {
+                                        # Opret mappen "Webtxt2"
+                                        New-Item -Path $Webtxt2UpdateFolderPath -ItemType Directory | Out-Null
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Ny mappe er oprettet: Webtxt2"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                        # $StatusLabel.SelectionColor = "Green"
+                                        # $StatusLabel.SelectedText = "`nNy mappe er oprettet: Webtxt2"
+                                    }
+                                    else {
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Mappen 'Webtxt2' eksisterer allerede og bliver ikke opdateret"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                    }
+                                }
+                                catch {
+                                    # Håndter eventuelle fejl, der opstår i try-blokken
+                                    $errorMessage = $_.Exception.Message
+                                    $StatusLabel.SelectionColor = "Red"
+                                    $StatusLabel.SelectedText = "`nFejl under oprettelse af mappen Webtxt2: $errorMessage"
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $errorLogEntry = "[$timestamp] Fejl opstod under oprettelse af mappen 'Webtxt2': $errorMessage"
+                                    Add-Content -Path $logFile -Value $errorLogEntry
+                                }
+
+                                # Kontroller om mappen "Åbningstider" eksisterer
+                                $hoursUpdateFolderPath = Join-Path $updatedFolderPath "Åbningstider"
+                                try {
+                                    if (!(Test-Path $hoursUpdateFolderPath)) {
+                                        # Opret mappen "Åbningstider"
+                                        New-Item -Path $hoursUpdateFolderPath -ItemType Directory | Out-Null
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Ny mappe er oprettet: Åbningstider"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                        # $StatusLabel.SelectionColor = "Green"
+                                        # $StatusLabel.SelectedText = "`nNy mappe er oprettet: Åbningstider"
+                                    }
+                                    else {
+                                        $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                        $logEntry = "[$timestamp] Mappen 'Åbningstider' eksisterer allerede og bliver ikke opdateret"
+                                        Add-Content -Path $logFile -Value $logEntry
+                                    }
+                                }
+                                catch {
+                                    # Håndter eventuelle fejl, der opstår i try-blokken
+                                    $errorMessage = $_.Exception.Message
+                                    $StatusLabel.SelectionColor = "Red"
+                                    $StatusLabel.SelectedText = "`nFejl under oprettelse af mappen Åbningstider: $errorMessage"
+                                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                    $errorLogEntry = "[$timestamp] Fejl opstod under oprettelse af mappen 'Åbningstider': $errorMessage"
+                                    Add-Content -Path $logFile -Value $errorLogEntry
+                                }
+                            }
+                            catch {
+                                $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                                $errorText = "Fejl: $_"
+                                $logEntry = $errorText
+                                Add-Content -Path $logFile -Value "[$timestamp] $logEntry"
+            
+                                $StatusLabel.SelectionColor = "Orange"
+                                $StatusLabel.SelectedText = "`n$errorText"
+                            }                    
+                        }
+                        $StatusLabel.SelectionColor = "Green"
+                        $StatusLabel.SelectedText = "`n`nAlle mappenavne og tekstfiler er blevet opdateret."
+                    }
+                }
+                catch {
+                    $timestamp = Get-Date -Format "dd-MM-yyyy HH:mm:ss"
+                    $errorText = "Fejl: $_"
+                    $logEntry = $errorText
+                    Add-Content -Path $logFile -Value "[$timestamp] $logEntry"
+            
+                    $StatusLabel.SelectionColor = "Orange"
+                    $StatusLabel.SelectedText = "`n$errorText"
+                }
+            })
+
+        # Add click event to Delete Dynamic Template button
+        $DeleteDynButton.Add_Click({
+                # Display a message box
+                $Message = "Scriptet er endnu ikke klar til at håndtere sletning af Dynamic Template`n"
+                $Message += "`nForetag sletningen manuelt"
+                [System.Windows.Forms.MessageBox]::Show($Message, "Advarsel", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+            })
+
+ 
+        ############################################################################################ End of Setting up execution buttons  ############################################################################################
     })
 
 # Adds buttons to the form
@@ -2603,6 +4654,9 @@ $Form.Controls.Add($BrowseButton)
 $Form.Controls.Add($ExportButton)
 $Form.Controls.Add($OpenFolderBtn)
 $Form.Controls.Add($CancelBtn)
+$Form.Controls.Add($CreateDynButton)
+$Form.Controls.Add($ChangeDynButton)
+$Form.Controls.Add($DeleteDynButton)
 
 # Releases Excel upon closing the script
 $Form.Add_FormClosing({
